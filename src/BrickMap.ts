@@ -11,9 +11,8 @@ const NODE_SIZE = 9;
 const MAX_NODES = 100_000;
 const MAX_BRICKS = 10_000;
 
-const MAX_DEPTH = 10;
+const MAX_DEPTH = 11;
 const BRICK_DEPTH = 3;
-const STOP_DEPTH = MAX_DEPTH - BRICK_DEPTH;
 const BRICK_DIM = (1 << BRICK_DEPTH);
 const BRICK_SIZE = BRICK_DIM * BRICK_DIM * BRICK_DIM;
 const RES_XYZ = 1 << (MAX_DEPTH - 1);
@@ -39,7 +38,7 @@ export class BrickMap {
     let halfRes = res >> 1;
     let halfResMask = halfRes - 1;
     let childOffset = this.getChildOffset(xIdx, yIdx, zIdx, halfRes);
-    if (level == STOP_DEPTH) {
+    if (halfRes === BRICK_DIM) {
       let brick: BrickMapBrick = this.nodes[atNode + childOffset];
       if (brick == 0 && value == 0) {
         return;
@@ -78,15 +77,10 @@ export class BrickMap {
     let halfRes = res >> 1;
     let halfResMask = halfRes - 1;
     let childOffset = this.getChildOffset(xIdx, yIdx, zIdx, halfRes);
-    if (level == STOP_DEPTH) {
+    if (halfRes === BRICK_DIM) {
       let brick: BrickMapBrick = this.nodes[atNode + childOffset];
       if (brick == 0) {
         return 0;
-      }
-      if (brick == 0) {
-        brick = this.allocBrick();
-        this.bricks[brick] = atNode;
-        this.nodes[atNode + childOffset] = brick;
       }
       return this.readFromBrick(brick, xIdx & halfResMask, yIdx & halfResMask, zIdx & halfResMask);
     } else {
@@ -109,7 +103,7 @@ export class BrickMap {
   }
 
   private allocBrick(): BrickMapBrick {
-    let brick: BrickMapBrick = this.brickFreeIndex++;
+    let brick: BrickMapBrick = ++this.brickFreeIndex;
     this.brickParents[(brick - 1)] = 0;
     let offset = (brick - 1) * BRICK_SIZE;
     for (let i = 0; i < BRICK_SIZE; ++i) {
