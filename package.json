@@ -7,16 +7,20 @@
     "start": "vite",
     "dev": "vite",
     "build": "vite build",
-    "serve": "vite preview"
+    "serve": "vite preview",
+    "test": "vitest"
   },
   "license": "MIT",
   "devDependencies": {
+    "jsdom": "^27.4.0",
     "solid-devtools": "^0.34.3",
     "typescript": "^5.7.2",
     "vite": "^7.1.4",
-    "vite-plugin-solid": "^2.11.8"
+    "vite-plugin-solid": "^2.11.8",
+    "vitest": "^4.0.17"
   },
   "dependencies": {
+    "prando": "^6.0.1",
     "solid-js": "^1.9.5"
   }
 }

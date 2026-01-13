@@ -31,6 +31,10 @@ export class BrickMap {
     this.set2(ROOT_BRICK_NODE, xIdx, yIdx, zIdx, 1, RES_XYZ, value);
   }
 
+  get(xIdx: number, yIdx: number, zIdx: number): number {
+    return this.get2(ROOT_BRICK_NODE, xIdx, yIdx, zIdx, 1, RES_XYZ);
+  }
+
   private set2(atNode: BrickMapNode, xIdx: number, yIdx: number, zIdx: number, level: number, res: number, value: number) {
     let halfRes = res >> 1;
     let halfResMask = halfRes - 1;
@@ -70,9 +74,38 @@ export class BrickMap {
     }
   }
 
-  private writeToBrick(brick: BrickMapBrick, x: number, y: number, z: number, value: number) {
-    const localIdx = x + (y * BRICK_DIM) + (z * BRICK_DIM * BRICK_DIM);
-    this.bricks[brick + localIdx] = value;
+  private get2(atNode: BrickMapNode, xIdx: number, yIdx: number, zIdx: number, level: number, res: number): number {
+    let halfRes = res >> 1;
+    let halfResMask = halfRes - 1;
+    let childOffset = this.getChildOffset(xIdx, yIdx, zIdx, halfRes);
+    if (level == STOP_DEPTH) {
+      let brick: BrickMapBrick = this.nodes[atNode + childOffset];
+      if (brick == 0) {
+        return 0;
+      }
+      if (brick == 0) {
+        brick = this.allocBrick();
+        this.bricks[brick] = atNode;
+        this.nodes[atNode + childOffset] = brick;
+      }
+      return this.readFromBrick(brick, xIdx & halfResMask, yIdx & halfResMask, zIdx & halfResMask);
+    } else {
+      let node: BrickMapNode = this.nodes[atNode + childOffset];
+      if (node == 0) {
+        return 0;
+      }
+      return this.get2(node, xIdx & halfResMask, yIdx & halfResMask, zIdx & halfResMask, level + 1, halfRes);
+    }
+  }
+
+  private writeToBrick(brick: BrickMapBrick, xIdx: number, yIdx: number, zIdx: number, value: number) {
+    const localIdx = xIdx + (yIdx * BRICK_DIM) + (zIdx * BRICK_DIM * BRICK_DIM);
+    this.bricks[(brick - 1) * BRICK_SIZE + localIdx] = value;
+  }
+
+  private readFromBrick(brick: BrickMapBrick, xIdx: number, yIdx: number, zIdx: number) {
+    const localIdx = xIdx + (yIdx * BRICK_DIM) + (zIdx * BRICK_DIM * BRICK_DIM);
+    return this.bricks[(brick - 1) * BRICK_SIZE + localIdx];
   }
 
   private allocBrick(): BrickMapBrick {
