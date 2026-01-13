@@ -5,7 +5,7 @@ import { BrickMap } from "./BrickMap";
 describe("BrickMap", () => {
   it("should read back the same values that were written", () => {
     let brickMap = new BrickMap();
-    let rng = new Prando();
+    let rng = new Prando(12345);
     let pts: [ number, number, number, number, ][] = [];
     for (let i = 0; i < 50; ++i) {
       pts.push([
@@ -23,7 +23,7 @@ describe("BrickMap", () => {
   });
   it("should return to 0 bricks and 1 node when everything is unset", () => {
     let brickMap = new BrickMap();
-    let rng = new Prando();
+    let rng = new Prando(12345);
     let pts: [ number, number, number, number, ][] = [];
     for (let i = 0; i < 50; ++i) {
       pts.push([
