@@ -240,6 +240,8 @@ export class BrickMap {
 `uniform usampler2D uNodesTex;
 uniform usampler2D uBricksTex;
 
+const float VOXEL_SIZE = 10.0;
+
 uint read_tex_1d(usampler2D tex, uint index) {
     int width = 2048; 
     uint pixelIndex = index / 4u;
@@ -266,13 +268,21 @@ uint get_child_offset(uvec3 p, uint half_res) {
   return offset;
 }
 
-uint read_from_brick(uint brick, uvec3 p) {
+float read_from_brick(uint brick, uvec3 p) {
   uint local_idx = p.x + (p.y * ${BRICK_DIM}u) + (p.z * ${BRICK_DIM * BRICK_DIM}u);
   uint global_idx = (brick - 1u) * ${BRICK_SIZE}u + local_idx;
-  return read_tex_1d(uBricksTex, global_idx);
+  uint r = read_tex_1d(uBricksTex, global_idx);
+  if (r == 0u) {
+    return VOXEL_SIZE;
+  } if (r < 128u) {
+    return VOXEL_SIZE * float(r) / 127.0;
+  } else {
+    uint r2 = (r - 1u) ^ 255u;
+    return -VOXEL_SIZE * float(r2) / 128.0;
+  }
 }
 
-uint read_brick_map(uvec3 p) {
+float read_brick_map(uvec3 p) {
   uint res = ${RES_XYZ}u;
   uint at_node = 0u;
   for (uint level = 0u; level < ${MAX_DEPTH - BRICK_DEPTH}u; ++level) {
@@ -283,7 +293,7 @@ uint read_brick_map(uvec3 p) {
     if (half_res == ${BRICK_DIM}u) {
       uint brick = brick_or_node;
       if (brick == 0u) {
-        return 0u;
+        return float(res) * VOXEL_SIZE;
       }
       return read_from_brick(
         brick,
@@ -296,7 +306,7 @@ uint read_brick_map(uvec3 p) {
     } else {
       uint node = brick_or_node;
       if (node == 0u) {
-        return 0u;
+        return float(res) * VOXEL_SIZE;
       }
       // tail recursion next params
       at_node = node;
@@ -308,7 +318,7 @@ uint read_brick_map(uvec3 p) {
       res = half_res;
     }
   }
-  return 0u;
+  return 0.0;
 }
 `
     );

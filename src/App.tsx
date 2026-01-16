@@ -197,6 +197,37 @@ out vec4 fragColour;
 
 ${brickMapShaderCode}
 
+float map(vec3 p) {
+  ivec3 p_min = ivec3(
+    int(p.x / VOXEL_SIZE),
+    int(p.y / VOXEL_SIZE),
+    int(p.z / VOXEL_SIZE)
+  );
+  if (p_min.x < 0 || p_min.y < 0 || p_min.z < 0) {
+    return 1000.0;
+  }
+  uvec3 p_min_2 = uvec3(
+    uint(p_min.x),
+    uint(p_min.y),
+    uint(p_min.z)
+  );
+  vec3 d = vec3(
+    (p.x - float(p_min_2.x) * VOXEL_SIZE) / VOXEL_SIZE,
+    (p.y - float(p_min_2.y) * VOXEL_SIZE) / VOXEL_SIZE,
+    (p.z - float(p_min_2.z) * VOXEL_SIZE) / VOXEL_SIZE
+  );
+  float v_nx_ny_nz = read_brick_map(p_min_2);
+  float v_nx_ny_pz = read_brick_map(p_min_2 + uvec3(0u, 0u, 1u));
+  float v_nx_py_nz = read_brick_map(p_min_2 + uvec3(0u, 1u, 0u));
+  float v_nx_py_pz = read_brick_map(p_min_2 + uvec3(0u, 1u, 1u));
+  float v_px_ny_nz = read_brick_map(p_min_2 + uvec3(1u, 0u, 0u));
+  float v_px_ny_pz = read_brick_map(p_min_2 + uvec3(1u, 0u, 1u));
+  float v_px_py_nz = read_brick_map(p_min_2 + uvec3(1u, 1u, 0u));
+  float v_px_py_pz = read_brick_map(p_min_2 + uvec3(1u, 1u, 1u));
+  // TODO interpolate the 8 points
+  return 0.0;
+}
+
 void main(void) {
   float fl = uFocalLength;
   float mx = max(resolution.x, resolution.y);
