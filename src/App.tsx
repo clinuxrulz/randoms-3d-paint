@@ -237,7 +237,7 @@ float map(vec3 p) {
   return v;
 }
 
-const int max_iterations = 20;
+const int max_iterations = 10;
 const float tollerance = 1.0;
 const float max_step = 999.0;
 
@@ -283,13 +283,18 @@ void main(void) {
     (gl_FragCoord.y - 0.5 * resolution.y) * v +
     -fl * w
   );
-  vec2 st = gl_FragCoord.xy / 400.0; 
-  fragColour = vec4(
-    float(read_brick_map(uvec3(512,512,512))) / 255.0,
-    st.x,
-    st.y,
-    1.0
-  );
+  float t = 0.0;
+  bool hit = march(ro, rd, false, t);
+  if (!hit) {
+    fragColour = vec4(0.2, 0.2, 0.2, 1.0);
+    return;
+  }
+  vec3 p = ro + rd*t;
+  vec3 n = normal(p);
+  float s = dot(n,normalize(vec3(1,1,1))) + 0.2;
+  vec4 c = vec4(1.0, 1.0, 1.0, 1.0);
+  c = vec4(c.rgb * s, c.a);
+  fragColour = c;
 }
       `;
       console.log(
