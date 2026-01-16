@@ -237,6 +237,39 @@ float map(vec3 p) {
   return v;
 }
 
+const int max_iterations = 20;
+const float tollerance = 1.0;
+const float max_step = 999.0;
+
+bool march(vec3 ro, vec3 rd, bool negateDist, out float t) {
+  vec3 p = ro;
+  t = 0.0;
+  for (int i = 0; i < max_iterations; ++i) {
+    vec3 p = ro + rd*t;
+    float d = map(p);
+    if (negateDist) {
+      d = -d;
+    }
+    if (d <= tollerance) {
+      return true;
+    }
+    if (d > max_step) {
+      return false;
+    }
+    t += d;
+  }
+  return false;
+}
+
+vec3 normal(vec3 p) {
+  float d = 0.01;
+  float mp = map(p);
+  float dx = map(p + vec3(d,0,0)) - mp;
+  float dy = map(p + vec3(0,d,0)) - mp;
+  float dz = map(p + vec3(0,0,d)) - mp;
+  return normalize(vec3(dx,dy,dz));
+}
+
 void main(void) {
   float fl = uFocalLength;
   float mx = max(resolution.x, resolution.y);
