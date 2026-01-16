@@ -8,6 +8,8 @@ type BrickMapBrick = number;
  */
 const NODE_SIZE = 9;
 
+const TEXTURE_RES = 2048;
+
 const MAX_NODES = 100_000;
 const MAX_BRICKS = 10_000;
 
@@ -197,13 +199,20 @@ export class BrickMap {
 
   writeShaderCode(): string {
     return (
-`layout(std140) uniform Nodes {
-  uint nodes[${MAX_NODES * NODE_SIZE}];
-};
+`uniform usampler2D uNodesTex;
+uniform usampler2D uBricksTex;
 
-layout(std140) uniform Bricks {
-  uint bricks[${MAX_BRICKS * BRICK_SIZE}];
-};
+uint read_tex_1d(usampler2D tex, uint index) {
+    int width = 2048; 
+    uint pixelIndex = index / 4u;
+    uint channel = index % 4u;
+    ivec2 coord = ivec2(int(pixelIndex) % width, int(pixelIndex) / width);
+    uvec4 data = texelFetch(tex, coord, 0);
+    if (channel == 0u) return data.r;
+    if (channel == 1u) return data.g;
+    if (channel == 2u) return data.b;
+    return data.a;
+}
 
 uint get_child_offset(uvec3 p, uint half_res) {
   uint offset = 1u;
@@ -221,7 +230,8 @@ uint get_child_offset(uvec3 p, uint half_res) {
 
 uint read_from_brick(uint brick, uvec3 p) {
   uint local_idx = p.x + (p.y * ${BRICK_DIM}u) + (p.z * ${BRICK_DIM * BRICK_DIM}u);
-  return bricks[(brick - 1u) * ${BRICK_SIZE}u + local_idx];
+  uint global_idx = (brick - 1u) * ${BRICK_SIZE}u + local_idx;
+  return read_tex_1d(uBricksTex, global_idx);
 }
 
 uint read_brick_map(uvec3 p) {
@@ -231,8 +241,9 @@ uint read_brick_map(uvec3 p) {
     uint half_res = res >> 1u;
     uint half_res_mask = half_res - 1u;
     uint child_offset = get_child_offset(p, half_res);
+    uint brick_or_node = read_tex_1d(uNodesTex, at_node + child_offset);
     if (half_res == ${BRICK_DIM}u) {
-      uint brick = nodes[at_node + child_offset];
+      uint brick = brick_or_node;
       if (brick == 0u) {
         return 0u;
       }
@@ -245,7 +256,7 @@ uint read_brick_map(uvec3 p) {
         )
       );
     } else {
-      uint node = nodes[at_node + child_offset];
+      uint node = brick_or_node;
       if (node == 0u) {
         return 0u;
       }

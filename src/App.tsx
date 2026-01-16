@@ -74,6 +74,10 @@ const App: Component = () => {
       }
       let fragmentShaderCode = `#version 300 es
 
+precision highp float;
+precision highp int;
+precision highp usampler2D;
+
 ${brickMapShaderCode}
 
 void main(void) {
