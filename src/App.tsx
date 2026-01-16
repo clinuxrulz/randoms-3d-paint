@@ -197,7 +197,10 @@ out vec4 fragColour;
 
 ${brickMapShaderCode}
 
+const float CUBE_SIZE = 512.0 * VOXEL_SIZE;
+
 float map(vec3 p) {
+  p += vec3(CUBE_SIZE, CUBE_SIZE, CUBE_SIZE);
   ivec3 p_min = ivec3(
     int(p.x / VOXEL_SIZE),
     int(p.y / VOXEL_SIZE),
@@ -224,8 +227,14 @@ float map(vec3 p) {
   float v_px_ny_pz = read_brick_map(p_min_2 + uvec3(1u, 0u, 1u));
   float v_px_py_nz = read_brick_map(p_min_2 + uvec3(1u, 1u, 0u));
   float v_px_py_pz = read_brick_map(p_min_2 + uvec3(1u, 1u, 1u));
-  // TODO interpolate the 8 points
-  return 0.0;
+  float v_ny_nz = mix(v_nx_ny_nz, v_px_ny_nz, d.x);
+  float v_ny_pz = mix(v_nx_ny_pz, v_px_ny_pz, d.x);
+  float v_py_nz = mix(v_nx_py_nz, v_px_py_nz, d.x);
+  float v_py_pz = mix(v_nx_py_pz, v_px_py_pz, d.x);
+  float v_nz = mix(v_ny_nz, v_py_nz, d.y);
+  float v_pz = mix(v_ny_pz, v_py_pz, d.y);
+  float v = mix(v_nz, v_pz, d.z);
+  return v;
 }
 
 void main(void) {
