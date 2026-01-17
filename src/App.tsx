@@ -28,15 +28,14 @@ const App: Component = () => {
         if (a < -1.0 || a > 1.0) {
           continue;
         }
-        a = Math.floor(a * 127);
-        if (a < 0) {
-          a += 256;
-        }
+        let val = 128 - Math.floor(Math.max(-1, Math.min(1, a)) * 127);
+        if (val < 1) val = 1; 
+        if (val > 255) val = 255;
         brickMap.set(
           512 + k,
           512 + j,
           512 + i,
-          a,
+          val,
         );
       }
     }
@@ -335,7 +334,7 @@ void main(void) {
   }
   vec3 p = ro + rd*t;
   vec3 n = normal(p);
-  float s = dot(n,normalize(vec3(1,1,1))) + 0.2;
+  float s = 0.8*dot(n,normalize(vec3(1,1,1))) + 0.2;
   vec4 c = vec4(1.0, 1.0, 1.0, 1.0);
   c = vec4(c.rgb * s, c.a);
   fragColour = c;

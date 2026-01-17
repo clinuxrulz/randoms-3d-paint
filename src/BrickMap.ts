@@ -276,14 +276,7 @@ float read_from_brick(uint brick, uvec3 p) {
   uint local_idx = p.x + (p.y * ${BRICK_DIM}u) + (p.z * ${BRICK_DIM * BRICK_DIM}u);
   uint global_idx = (brick - 1u) * ${BRICK_SIZE}u + local_idx;
   uint r = read_tex_1d(uBricksTex, global_idx);
-  if (r == 0u) {
-    return VOXEL_SIZE;
-  } if (r < 128u) {
-    return VOXEL_SIZE * float(r) / 127.0;
-  } else {
-    uint r2 = (r ^ 255u) + 1u;
-    return -VOXEL_SIZE * float(r2) / 128.0;
-  }
+  return (128.0 - float(r)) / 127.0 * VOXEL_SIZE;
 }
 
 float read_brick_map(uvec3 p) {
@@ -305,7 +298,7 @@ float read_brick_map(uvec3 p) {
     if (half_res == ${BRICK_DIM}u) {
       uint brick = brick_or_node;
       if (brick == 0u) {
-        return 0.5*float(half_res) * VOXEL_SIZE;
+        return 0.2*float(half_res) * VOXEL_SIZE;
       }
       return read_from_brick(
         brick,
@@ -318,7 +311,7 @@ float read_brick_map(uvec3 p) {
     } else {
       uint node = brick_or_node;
       if (node == 0u) {
-        return 0.5*float(half_res) * VOXEL_SIZE;
+        return 0.2*float(half_res) * VOXEL_SIZE;
       }
       // tail recursion next params
       at_node = node;
