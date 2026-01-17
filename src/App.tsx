@@ -14,14 +14,29 @@ const App: Component = () => {
   let focalLengthLocation: WebGLUniformLocation | null | undefined = undefined;
   let modelViewMatrixLocation: WebGLUniformLocation | null | undefined = undefined;
   // test data
-  for (let i = -1; i <= 1; i += 2) {
-    for (let j = -1; j <= 1; j += 2) {
-      for (let k = -1; k <= 1; k += 2) {
+  function test_sdf(x: number, y: number, z: number) {
+    let dx = x;
+    let dy = y;
+    let dz = z;
+    return Math.sqrt(dx * dx + dy * dy + dz * dz) - 100.0;
+  }
+  for (let i = -105; i <= 105; ++i) {
+    for (let j = -105; j <= 105; ++j) {
+      for (let k = -105; k <= 105; ++k) {
+        let a = test_sdf(i,j,k);
+        a /= Math.sqrt(3);
+        if (a < -1.0 || a > 1.0) {
+          continue;
+        }
+        a = Math.floor(a * 127);
+        if (a < 0) {
+          a += 256;
+        }
         brickMap.set(
           512 + k,
           512 + j,
           512 + i,
-          i * j * k,
+          a,
         );
       }
     }
@@ -199,8 +214,16 @@ ${brickMapShaderCode}
 
 const float CUBE_SIZE = 512.0 * VOXEL_SIZE;
 
+float map2(vec3 p) {
+  p += 512.0 * VOXEL_SIZE;
+  return abs(length(p - vec3(512.0*VOXEL_SIZE)) - 100.0 * VOXEL_SIZE);
+}
+
 float map(vec3 p) {
-  p += vec3(CUBE_SIZE, CUBE_SIZE, CUBE_SIZE);
+  if (false) {
+    return map2(p);
+  }
+  p += 512.0 * VOXEL_SIZE;
   ivec3 p_min = ivec3(
     int(p.x / VOXEL_SIZE),
     int(p.y / VOXEL_SIZE),
@@ -234,12 +257,12 @@ float map(vec3 p) {
   float v_nz = mix(v_ny_nz, v_py_nz, d.y);
   float v_pz = mix(v_ny_pz, v_py_pz, d.y);
   float v = mix(v_nz, v_pz, d.z);
-  return v;
+  return abs(v);
 }
 
-const int max_iterations = 10;
+const int max_iterations = 100;
 const float tollerance = 1.0;
-const float max_step = 999.0;
+const float max_step = 999000.0;
 
 bool march(vec3 ro, vec3 rd, bool negateDist, out float t) {
   vec3 p = ro;
@@ -272,12 +295,33 @@ vec3 normal(vec3 p) {
 
 void main(void) {
   float fl = uFocalLength;
-  float mx = max(resolution.x, resolution.y);
-  vec2 uv = gl_FragCoord.xy / mx;
+  float mn = min(resolution.x, resolution.y);
+  vec2 uv = (gl_FragCoord.xy - 0.5 * resolution) / mn;
+  if (false) {
+    vec3 p = vec3(uv.x*10240.0/3.0,uv.y*10240.0/3.0,0.0);
+    float v = map(p);
+    fragColour = vec4(0.0, 0.0, v * 0.01, 1.0);
+    return;
+  }
+  if (false) {
+    uvec3 p = uvec3(
+      uint(max(0,min(1023,int((uv.x+0.5)*1024.0)))),
+      uint(max(0,min(1023,int((uv.y+0.5)*1024.0)))),
+      512u
+    );
+    float v = read_brick_map(p);
+    fragColour = vec4(v * 0.01, float(p.x)/1024.0, float(p.y)/1024.0, 1.0);
+    return;
+  }
+  if (false) {
+    float v = float(read_tex_1d(uNodesTex, uint(gl_FragCoord.x)));
+    fragColour = vec4(v * 0.01, 0.0, 0.0, 1.0);
+    return;
+  }
   vec3 w = normalize(vec3(0.0, 0.0, 1.0));
   vec3 u = normalize(cross(vec3(0,1,0),w));
   vec3 v = cross(w,u);
-  vec3 ro = vec3(0.0);
+  vec3 ro = vec3(0.0, 0.0, 5000.0);
   vec3 rd = normalize(
     (gl_FragCoord.x - 0.5 * resolution.x) * u +
     (gl_FragCoord.y - 0.5 * resolution.y) * v +

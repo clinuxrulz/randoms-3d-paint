@@ -8,10 +8,10 @@ type BrickMapBrick = number;
  */
 const NODE_SIZE = 9;
 
-const TEXTURE_RES = 256;
+const TEXTURE_RES = 2048;
 
-const MAX_NODES = 100_000;
-const MAX_BRICKS = 10_000;
+const MAX_NODES = 2_000_000;
+const MAX_BRICKS = 40_000;
 
 const MAX_DEPTH = 11;
 const BRICK_DEPTH = 3;
@@ -208,6 +208,8 @@ export class BrickMap {
     gl.activeTexture(gl.TEXTURE0);
     let nodesTexture = gl.createTexture();
     gl.bindTexture(gl.TEXTURE_2D, nodesTexture);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
     gl.texImage2D(
       gl.TEXTURE_2D,
       0,
@@ -222,6 +224,8 @@ export class BrickMap {
     gl.activeTexture(gl.TEXTURE1);
     let bricksTexture = gl.createTexture();
     gl.bindTexture(gl.TEXTURE_2D, bricksTexture);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
     gl.texImage2D(
       gl.TEXTURE_2D,
       0,
@@ -243,7 +247,7 @@ uniform usampler2D uBricksTex;
 const float VOXEL_SIZE = 10.0;
 
 uint read_tex_1d(usampler2D tex, uint index) {
-    int width = 2048; 
+    int width = ${TEXTURE_RES}; 
     uint pixelIndex = index / 4u;
     uint channel = index % 4u;
     ivec2 coord = ivec2(int(pixelIndex) % width, int(pixelIndex) / width);
@@ -277,12 +281,20 @@ float read_from_brick(uint brick, uvec3 p) {
   } if (r < 128u) {
     return VOXEL_SIZE * float(r) / 127.0;
   } else {
-    uint r2 = (r - 1u) ^ 255u;
+    uint r2 = (r ^ 255u) + 1u;
     return -VOXEL_SIZE * float(r2) / 128.0;
   }
 }
 
 float read_brick_map(uvec3 p) {
+  if (false) {
+    vec3 p2 = vec3(
+      float(p.x) - 512.0,
+      float(p.y) - 512.0,
+      float(p.z) - 512.0
+    );
+    return (length(p2) - 100.0) * VOXEL_SIZE;
+  }
   uint res = ${RES_XYZ}u;
   uint at_node = 0u;
   for (uint level = 0u; level < ${MAX_DEPTH - BRICK_DEPTH}u; ++level) {
@@ -293,7 +305,7 @@ float read_brick_map(uvec3 p) {
     if (half_res == ${BRICK_DIM}u) {
       uint brick = brick_or_node;
       if (brick == 0u) {
-        return float(res) * VOXEL_SIZE;
+        return 0.5*float(half_res) * VOXEL_SIZE;
       }
       return read_from_brick(
         brick,
@@ -306,7 +318,7 @@ float read_brick_map(uvec3 p) {
     } else {
       uint node = brick_or_node;
       if (node == 0u) {
-        return float(res) * VOXEL_SIZE;
+        return 0.5*float(half_res) * VOXEL_SIZE;
       }
       // tail recursion next params
       at_node = node;
