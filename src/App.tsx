@@ -13,7 +13,11 @@ const App: Component = () => {
   let resolutionLocation: WebGLUniformLocation | null | undefined = undefined;
   let focalLengthLocation: WebGLUniformLocation | null | undefined = undefined;
   let modelViewMatrixLocation: WebGLUniformLocation | null | undefined = undefined;
+  let nodesTexture: WebGLTexture | undefined = undefined;
+  let bricksTexture: WebGLTexture | undefined = undefined;
+  let angleLocation: WebGLUniformLocation | null | undefined = undefined;
   // test data
+  /*
   function test_sdf(x: number, y: number, z: number) {
     let dx = x;
     let dy = y;
@@ -39,7 +43,7 @@ const App: Component = () => {
         );
       }
     }
-  }
+  }*/
   //
   let brickMapShaderCode = brickMap.writeShaderCode();
   let updateQuad = () => {
@@ -206,6 +210,7 @@ precision highp usampler2D;
 
 uniform vec2 resolution;
 uniform float uFocalLength;
+uniform float uAngle;
 
 out vec4 fragColour;
 
@@ -317,10 +322,12 @@ void main(void) {
     fragColour = vec4(v * 0.01, 0.0, 0.0, 1.0);
     return;
   }
-  vec3 w = normalize(vec3(0.0, 0.0, 1.0));
+  float ca = cos(uAngle * acos(-1.0) / 180.0);
+  float sa = sin(uAngle * acos(-1.0) / 180.0);
+  vec3 w = normalize(vec3(sa, 0.0, ca));
   vec3 u = normalize(cross(vec3(0,1,0),w));
   vec3 v = cross(w,u);
-  vec3 ro = vec3(0.0, 0.0, 5000.0);
+  vec3 ro = vec3(5000.0 * sa, 0.0, 5000.0 * ca);
   vec3 rd = normalize(
     (gl_FragCoord.x - 0.5 * resolution.x) * u +
     (gl_FragCoord.y - 0.5 * resolution.y) * v +
@@ -367,23 +374,250 @@ void main(void) {
         return undefined;
       }
       gl.useProgram(shaderProgram);
-      brickMap.initTextures(gl, shaderProgram);
+      let {
+        nodesTexture: nodesTexture2,
+        bricksTexture: bricksTexture2,
+      } = brickMap.initTextures(gl, shaderProgram);
+      nodesTexture = nodesTexture2;
+      bricksTexture = bricksTexture2;
       positionLocation = gl.getAttribLocation(shaderProgram, "aVertexPosition");
       resolutionLocation = gl.getUniformLocation(shaderProgram, "resolution");
       focalLengthLocation = gl.getUniformLocation(shaderProgram, "uFocalLength");
       modelViewMatrixLocation = gl.getUniformLocation(shaderProgram, "uModelViewMatrix");
+      angleLocation = gl.getUniformLocation(shaderProgram, "uAngle");
       quadVerticesBuffer = gl.createBuffer();
       updateQuad();
     },
   ));
+  let drawInBrickmap = (x: number, y: number) => {
+    let cx = 512 + Math.round(x);
+    let cy = 512 + Math.round(y);
+    let cz = 512;
+    let r = 5;
+    for (let i = -r-2; i <= r+2; ++i) {
+      for (let j = -r-2; j <= r+2; ++j) {
+        for (let k = -r-2; k <= r+2; ++k) {
+          let a = Math.sqrt(i*i + j*j + k*k) - r;
+          a /= Math.sqrt(3);
+          if (a < -1.0 || a > 1.0) {
+            continue;
+          }
+          let val = 128 - Math.floor(Math.max(-1, Math.min(1, a)) * 127);
+          if (val < 1) val = 1; 
+          if (val > 255) val = 255;
+          let x = cx + k;
+          let y = cy + j;
+          let z = cz + i;
+          if (
+            x < 0 || x >= 1024 ||
+            y < 0 || y >= 1024 ||
+            z < 0 || z >= 1024
+          ) {
+            continue;
+          }
+          brickMap.set(
+            x,
+            y,
+            z,
+            val,
+          );
+        }
+      }
+    }
+  };
+  let strokeInBrickmap = (x1: number, y1: number, x2: number, y2: number) => {
+    let pt1x = 512 + Math.round(x1);
+    let pt1y = 512 + Math.round(y1);
+    let pt1z = 512;
+    let pt2x = 512 + Math.round(x2);
+    let pt2y = 512 + Math.round(y2);
+    let pt2z = 512;
+    let r = 20;
+    let ux = pt2x - pt1x;
+    let uy = pt2y - pt1y;
+    let uz = pt2z - pt1z;
+    let uu = ux * ux + uy * uy + uz * uz;
+    let sdf = (x: number, y: number, z: number) => {
+      let t = ((x - pt1x) * ux + (y - pt1y) * uy + (z - pt1z) * uz) / uu;
+      t = Math.max(0.0, Math.min(1.0, t));
+      let px = pt1x + ux * t;
+      let py = pt1y + uy * t;
+      let pz = pt1z + uz * t;
+      let dx = x - px;
+      let dy = y - py;
+      let dz = z - pz;
+      return Math.sqrt(dx*dx + dy*dy + dz*dz) - r;
+    };
+    let min_x = Math.min(pt1x, pt2x) - r;
+    let max_x = Math.max(pt1x, pt2x) + r;
+    let min_y = Math.min(pt1y, pt2y) - r;
+    let max_y = Math.max(pt1y, pt2y) + r;
+    let min_z = Math.min(pt1z, pt2z) - r;
+    let max_z = Math.max(pt1z, pt2z) + r;
+    for (let i = min_z-2; i <= max_z+2; ++i) {
+      for (let j = min_y-2; j <= max_y+2; ++j) {
+        for (let k = min_x-2; k <= max_x+2; ++k) {
+          if (
+            i < 0 || i >= 1024 ||
+            j < 0 || j >= 1024 ||
+            k < 0 || k >= 1024
+          ) {
+            continue;
+          }
+          let a = sdf(k, j, i);
+          a /= Math.sqrt(3);
+          if (a < -1.0 || a > 1.0) {
+            continue;
+          }
+          let val = 128 - Math.floor(Math.max(-1, Math.min(1, a)) * 127);
+          if (val < 1) val = 1; 
+          if (val > 255) val = 255;
+          let oldVal = brickMap.get(k, j, i);
+          if (oldVal != 0) {
+            val = Math.max(val, oldVal);
+          }
+          brickMap.set(
+            k,
+            j,
+            i,
+            val,
+          );
+        }
+      }
+    }
+  };
+  let lastDrawX: number | undefined = undefined;
+  let lastDrawY: number | undefined = undefined;
+  let onPointerDown = (e: PointerEvent) => {
+    let canvas2 = canvas();
+    if (canvas2 == undefined) {
+      return;
+    }
+    canvas2.setPointerCapture(e.pointerId);
+    let gl2 = gl();
+    if (gl2 == undefined) {
+      return undefined;
+    }
+    if (nodesTexture == undefined) {
+      return;
+    }
+    if (bricksTexture == undefined) {
+      return;
+    }
+    let rect = canvas2.getBoundingClientRect();
+    let x = e.clientX - rect.left;
+    let y = e.clientY - rect.top;
+    let x2 = x - 0.5 * rect.width;
+    let y2 = -y + 0.5 * rect.height;
+    lastDrawX = x2;
+    lastDrawY = y2;
+    drawInBrickmap(x2, y2);
+    brickMap.updateTextures(gl2, nodesTexture, bricksTexture);
+    rerender();
+  }
+  let onPointerMove = (e: PointerEvent) => {
+    if (lastDrawX == undefined) {
+      return;
+    }
+    if (lastDrawY == undefined) {
+      return;
+    }
+    let canvas2 = canvas();
+    if (canvas2 == undefined) {
+      return;
+    }
+    let gl2 = gl();
+    if (gl2 == undefined) {
+      return undefined;
+    }
+    if (nodesTexture == undefined) {
+      return;
+    }
+    if (bricksTexture == undefined) {
+      return;
+    }
+    let rect = canvas2.getBoundingClientRect();
+    let x = e.clientX - rect.left;
+    let y = e.clientY - rect.top;
+    let x2 = x - 0.5 * rect.width;
+    let y2 = -y + 0.5 * rect.height;
+    let dx = x2 - lastDrawX;
+    let dy = y2 - lastDrawY;
+    let distSquared = dx * dx + dy * dy;
+    if (distSquared <= 100*100) {
+      return;
+    }
+    strokeInBrickmap(lastDrawX, lastDrawY, x2, y2);
+    lastDrawX = x2;
+    lastDrawY = y2;
+    brickMap.updateTextures(gl2, nodesTexture, bricksTexture);
+    rerender();
+  };
+  let onPointerUp = (e: PointerEvent) => {
+    let canvas2 = canvas();
+    if (canvas2 == undefined) {
+      return;
+    }
+    canvas2.releasePointerCapture(e.pointerId);
+    lastDrawX = undefined;
+    lastDrawY = undefined;
+  };
+  let spin = () => {
+    let angle = 0.0;
+    let animate = () => {
+      let gl2 = gl();
+      if (gl2 == undefined) {
+        return;
+      }
+      if (angleLocation === undefined) {
+        return;
+      }
+      angle += 10.0;
+      gl2.uniform1f(angleLocation, angle);
+      rerender();
+      requestAnimationFrame(animate);
+    };
+    requestAnimationFrame(animate);
+  };
   return (
-    <canvas
-      ref={setCanvas}
+    <div
       style={{
+        position: "relative",
         width: "100%",
         height: "100%",
       }}
-    />
+    >
+      <canvas
+        ref={setCanvas}
+        style={{
+          position: "absolute",
+          left: "0",
+          top: "0",
+          width: "100%",
+          height: "100%",
+          "touch-action": "none",
+        }}
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={onPointerUp}
+      />
+      <div
+        class="ml-2 mt-2"
+        style={{
+          position: "absolute",
+          left: "0",
+          top: "0",
+        }}
+      >
+        <button class="btn btn-primary">Draw</button>
+        <button
+          class="btn btn-primary ml-2"
+          onClick={() => spin()}
+        >
+          Spin
+        </button>
+      </div>
+    </div>
   );
 };
 

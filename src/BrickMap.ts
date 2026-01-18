@@ -8,7 +8,8 @@ type BrickMapBrick = number;
  */
 const NODE_SIZE = 9;
 
-const TEXTURE_RES = 2048;
+const TEXTURE_DEPTH = 11;
+const TEXTURE_RES = (1 << TEXTURE_DEPTH);
 
 const MAX_NODES = 2_000_000;
 const MAX_BRICKS = 40_000;
@@ -200,7 +201,10 @@ export class BrickMap {
   initTextures(
     gl: WebGL2RenderingContext,
     program: WebGLProgram,
-  ) {
+  ): {
+    nodesTexture: WebGLTexture,
+    bricksTexture: WebGLTexture,
+  } {
     let uNodesTex = gl.getUniformLocation(program, "uNodesTex");
     let uBricksTex = gl.getUniformLocation(program, "uBricksTex");
     gl.uniform1i(uNodesTex, 0);
@@ -237,6 +241,47 @@ export class BrickMap {
       gl.UNSIGNED_INT,
       this.bricks,
     );
+    return {
+      nodesTexture,
+      bricksTexture,
+    };
+  }
+
+  updateTextures(
+    gl: WebGL2RenderingContext,
+    nodesTexture: WebGLTexture,
+    bricksTexture: WebGLTexture,
+  ) {
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_2D, nodesTexture);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+    gl.texImage2D(
+      gl.TEXTURE_2D,
+      0,
+      gl.RGBA32UI,
+      TEXTURE_RES,
+      TEXTURE_RES,
+      0,
+      gl.RGBA_INTEGER,
+      gl.UNSIGNED_INT,
+      this.nodes,
+    );
+    gl.activeTexture(gl.TEXTURE1);
+    gl.bindTexture(gl.TEXTURE_2D, bricksTexture);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+    gl.texImage2D(
+      gl.TEXTURE_2D,
+      0,
+      gl.RGBA32UI,
+      TEXTURE_RES,
+      TEXTURE_RES,
+      0,
+      gl.RGBA_INTEGER,
+      gl.UNSIGNED_INT,
+      this.bricks,
+    );
   }
 
   writeShaderCode(): string {
@@ -248,9 +293,9 @@ const float VOXEL_SIZE = 10.0;
 
 uint read_tex_1d(usampler2D tex, uint index) {
     int width = ${TEXTURE_RES}; 
-    uint pixelIndex = index / 4u;
-    uint channel = index % 4u;
-    ivec2 coord = ivec2(int(pixelIndex) % width, int(pixelIndex) / width);
+    uint pixelIndex = index >> 2u;
+    uint channel = index & 3u;
+    ivec2 coord = ivec2(int(pixelIndex) & (width-1), int(pixelIndex) >> ${TEXTURE_DEPTH});
     uvec4 data = texelFetch(tex, coord, 0);
     if (channel == 0u) return data.r;
     if (channel == 1u) return data.g;
