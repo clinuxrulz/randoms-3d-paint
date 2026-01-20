@@ -1,5 +1,5 @@
 import { createComputed, createSignal, on, onCleanup, onMount, type Component } from 'solid-js';
-import { BrickMap } from './BrickMap';
+import { BrickMap, BrickMapTextures } from './BrickMap';
 
 const FOV_Y = 50.0;
 
@@ -13,11 +13,9 @@ const App: Component = () => {
   let resolutionLocation: WebGLUniformLocation | null | undefined = undefined;
   let focalLengthLocation: WebGLUniformLocation | null | undefined = undefined;
   let modelViewMatrixLocation: WebGLUniformLocation | null | undefined = undefined;
-  let nodesTexture: WebGLTexture | undefined = undefined;
-  let bricksTexture: WebGLTexture | undefined = undefined;
+  let brickMapTextures: BrickMapTextures | undefined = undefined;
   let angleLocation: WebGLUniformLocation | null | undefined = undefined;
   // test data
-  /*
   function test_sdf(x: number, y: number, z: number) {
     let dx = x;
     let dy = y;
@@ -43,7 +41,7 @@ const App: Component = () => {
         );
       }
     }
-  }*/
+  }
   //
   let brickMapShaderCode = brickMap.writeShaderCode();
   let updateQuad = () => {
@@ -317,11 +315,6 @@ void main(void) {
     fragColour = vec4(v * 0.01, float(p.x)/1024.0, float(p.y)/1024.0, 1.0);
     return;
   }
-  if (false) {
-    float v = float(read_tex_1d(uNodesTex, uint(gl_FragCoord.x)));
-    fragColour = vec4(v * 0.01, 0.0, 0.0, 1.0);
-    return;
-  }
   float ca = cos(uAngle * acos(-1.0) / 180.0);
   float sa = sin(uAngle * acos(-1.0) / 180.0);
   vec3 w = normalize(vec3(sa, 0.0, ca));
@@ -374,12 +367,7 @@ void main(void) {
         return undefined;
       }
       gl.useProgram(shaderProgram);
-      let {
-        nodesTexture: nodesTexture2,
-        bricksTexture: bricksTexture2,
-      } = brickMap.initTextures(gl, shaderProgram);
-      nodesTexture = nodesTexture2;
-      bricksTexture = bricksTexture2;
+      brickMapTextures = brickMap.initTextures(gl, shaderProgram);
       positionLocation = gl.getAttribLocation(shaderProgram, "aVertexPosition");
       resolutionLocation = gl.getUniformLocation(shaderProgram, "resolution");
       focalLengthLocation = gl.getUniformLocation(shaderProgram, "uFocalLength");
@@ -498,10 +486,7 @@ void main(void) {
     if (gl2 == undefined) {
       return undefined;
     }
-    if (nodesTexture == undefined) {
-      return;
-    }
-    if (bricksTexture == undefined) {
+    if (brickMapTextures == undefined) {
       return;
     }
     let rect = canvas2.getBoundingClientRect();
@@ -512,7 +497,7 @@ void main(void) {
     lastDrawX = x2;
     lastDrawY = y2;
     drawInBrickmap(x2, y2);
-    brickMap.updateTextures(gl2, nodesTexture, bricksTexture);
+    brickMap.updateTextures(gl2, brickMapTextures);
     rerender();
   }
   let onPointerMove = (e: PointerEvent) => {
@@ -530,10 +515,7 @@ void main(void) {
     if (gl2 == undefined) {
       return undefined;
     }
-    if (nodesTexture == undefined) {
-      return;
-    }
-    if (bricksTexture == undefined) {
+    if (brickMapTextures == undefined) {
       return;
     }
     let rect = canvas2.getBoundingClientRect();
@@ -550,7 +532,7 @@ void main(void) {
     strokeInBrickmap(lastDrawX, lastDrawY, x2, y2);
     lastDrawX = x2;
     lastDrawY = y2;
-    brickMap.updateTextures(gl2, nodesTexture, bricksTexture);
+    brickMap.updateTextures(gl2, brickMapTextures);
     rerender();
   };
   let onPointerUp = (e: PointerEvent) => {

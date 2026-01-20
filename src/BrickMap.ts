@@ -22,6 +22,11 @@ const RES_XYZ = 1 << (MAX_DEPTH - 1);
 
 let ROOT_BRICK_NODE: BrickMapNode = 0;
 
+export type BrickMapTextures = {
+  nodesTexture: WebGLTexture,
+  bricksTexture: WebGLTexture,
+};
+
 export class BrickMap {
   private nodes: Uint32Array = new Uint32Array(MAX_NODES * NODE_SIZE);
   private brickParents: Uint32Array = new Uint32Array(MAX_BRICKS);
@@ -201,10 +206,7 @@ export class BrickMap {
   initTextures(
     gl: WebGL2RenderingContext,
     program: WebGLProgram,
-  ): {
-    nodesTexture: WebGLTexture,
-    bricksTexture: WebGLTexture,
-  } {
+  ): BrickMapTextures {
     let uNodesTex = gl.getUniformLocation(program, "uNodesTex");
     let uBricksTex = gl.getUniformLocation(program, "uBricksTex");
     gl.uniform1i(uNodesTex, 0);
@@ -249,9 +251,12 @@ export class BrickMap {
 
   updateTextures(
     gl: WebGL2RenderingContext,
-    nodesTexture: WebGLTexture,
-    bricksTexture: WebGLTexture,
+    brickmapTextures: BrickMapTextures,
   ) {
+    let {
+      nodesTexture,
+      bricksTexture,
+    } = brickmapTextures;
     gl.activeTexture(gl.TEXTURE0);
     gl.bindTexture(gl.TEXTURE_2D, nodesTexture);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);

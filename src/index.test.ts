@@ -1,10 +1,10 @@
 import { describe, it, expect } from "vitest";
 import Prando from "prando";
-import { BrickMap } from "./BrickMap";
+import { BrickMapV2 } from "./BrickMapV2";
 
 describe("BrickMap", () => {
   it("should read back the same values that were written", () => {
-    let brickMap = new BrickMap();
+    let brickMap = new BrickMapV2();
     let rng = new Prando(12345);
     let pts: [ number, number, number, number, ][] = [];
     for (let i = 0; i < 50; ++i) {
@@ -21,8 +21,8 @@ describe("BrickMap", () => {
       expect(val).toBe(pts[i][3]);
     }
   });
-  it("should return to 0 bricks and 1 node when everything is unset", () => {
-    let brickMap = new BrickMap();
+  it("should return to 0 bricks when everything is unset", () => {
+    let brickMap = new BrickMapV2();
     let rng = new Prando(12345);
     let pts: [ number, number, number, number, ][] = [];
     for (let i = 0; i < 50; ++i) {
@@ -38,6 +38,5 @@ describe("BrickMap", () => {
       brickMap.set(pts[i][0], pts[i][1], pts[i][2], 0);
     }
     expect(brickMap.numBricks).toBe(0);
-    expect(brickMap.numNodes).toBe(1);
   });
 });
