@@ -300,9 +300,9 @@ void main(void) {
   float mn = min(resolution.x, resolution.y);
   vec2 uv = (gl_FragCoord.xy - 0.5 * resolution) / mn;
   if (false) {
-    vec3 p = vec3(uv.x*10240.0/3.0,uv.y*10240.0/3.0,0.0);
+    vec3 p = vec3(uv.x*10240.0/3.0,uv.y*10240.0/3.0,201.0);
     float v = map(p);
-    fragColour = vec4(0.0, 0.0, v * 0.01, 1.0);
+    fragColour = vec4(0.0, 0.0, v*0.0015, 1.0);
     return;
   }
   if (false) {
@@ -526,7 +526,7 @@ void main(void) {
     let dx = x2 - lastDrawX;
     let dy = y2 - lastDrawY;
     let distSquared = dx * dx + dy * dy;
-    if (distSquared <= 100*100) {
+    if (distSquared <= 5*5) {
       return;
     }
     strokeInBrickmap(lastDrawX, lastDrawY, x2, y2);

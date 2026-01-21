@@ -1,7 +1,7 @@
-const TEXTURE_WIDTH_BITS = 9;
+const TEXTURE_WIDTH_BITS = 10;
 const TEXTURE_WIDTH = (1 << TEXTURE_WIDTH_BITS);
 const TEXTURE_WIDTH_MASK = TEXTURE_WIDTH - 1;
-const TEXTURE_HEIGHT_BITS = 9;
+const TEXTURE_HEIGHT_BITS = 10;
 const TEXTURE_HEIGHT = (1 << TEXTURE_HEIGHT_BITS);
 const TEXTURE_HEIGHT_MASK = TEXTURE_HEIGHT - 1;
 
@@ -122,6 +122,7 @@ export class BrickMapV3 {
         halfRes,
       );
       if (deleteIt) {
+        atNode.children[childIdx] = undefined;
         let allUndefined = true;
         for (let child of atNode.children) {
           if (child !== undefined) {
@@ -130,7 +131,6 @@ export class BrickMapV3 {
           }
         }
         if (allUndefined) {
-          atNode.children[childIdx] = undefined;
           return /*deleteIt=*/true;
         }
       }
@@ -279,20 +279,22 @@ uint get_child_index(uvec3 p, uint half_res) {
 float read_brick_map(uvec3 p) {
   uint res = ${BRICK_MAP_RES}u;
   uint half_res = res >> 1u;
-  uint half_res_mask = half_res - 1;
-  uint idx = 0;
+  uint half_res_mask = half_res - 1u;
+  uint idx = 0u;
   for (int i = 0; i < ${MAX_BRANCH_DEPTH}; ++i) {
     uint child_mask = read_tex_1d(idx++);
     if (child_mask == 0u) {
-      let d = min(
+      uint d = min(
         min(p.x, res - p.x),
-        min(p.y, res - p.y),
-        min(p.z, res - p.z)
+        min(
+          min(p.y, res - p.y),
+          min(p.z, res - p.z)
+        )
       );
       return max(float(d) * VOXEL_SIZE, 0.5);
     }
     uint child_idx = get_child_index(p, half_res);
-    for (int j = 0; j < 8; ++j) {
+    for (uint j = 0u; j < 8u; ++j) {
       bool has_child = (child_mask & 1u) != 0u;
       if (j != child_idx) {
         if (has_child) {
@@ -307,24 +309,26 @@ float read_brick_map(uvec3 p) {
           p = uvec3(
             p.x & half_res_mask,
             p.y & half_res_mask,
-            p.z & half_res_mash
+            p.z & half_res_mask
           );
-          let d = min(
+          uint d = min(
             min(p.x, half_res - p.x),
-            min(p.y, half_res - p.y),
-            min(p.z, half_res - p.z)
+            min(
+              min(p.y, half_res - p.y),
+              min(p.z, half_res - p.z)
+            )
           );
-          return max(float(d) * VOXEL_SIZE, 0.5);
+          return max(0.2*float(half_res) * VOXEL_SIZE, 0.5);
         } else {
           // setup next iteration
           p = uvec3(
             p.x & half_res_mask,
             p.y & half_res_mask,
-            p.z & half_res_mash
+            p.z & half_res_mask
           );
           res = half_res;
           half_res = res >> 1u;
-          half_res_mask = half_res - 1;
+          half_res_mask = half_res - 1u;
           break;
         }
       }
@@ -332,12 +336,12 @@ float read_brick_map(uvec3 p) {
     }
   }
   // if we get to here we are at a leaf
-  let offset = (
+  uint offset = (
     (p.z << ${BRICK_RES_BITS + BRICK_RES_BITS}) +
     (p.y << ${BRICK_RES_BITS}) +
-    p.z
+    p.x
   );
-  let val = read_tex_1d(idx + offset);
+  uint val = read_tex_1d(idx + offset);
   return (128.0 - float(val)) / 127.0 * VOXEL_SIZE;
 }
 `
