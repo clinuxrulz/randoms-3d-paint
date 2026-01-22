@@ -65,9 +65,6 @@ export class BrickMap {
   }
 
   set(x: number, y: number, z: number, value: number) {
-    // 1. Determine the range of bricks affected by this voxel.
-    // Because of the 1-voxel gutter, world voxel 'x' affects any brick
-    // whose logical range (gx*8 to gx*8+7) is within 1 unit of 'x'.
     const minGx = (x - 1) >> BRICK_L_RES_BITS;
     const maxGx = (x + 1) >> BRICK_L_RES_BITS;
     const minGy = (y - 1) >> BRICK_L_RES_BITS;
@@ -75,29 +72,18 @@ export class BrickMap {
     const minGz = (z - 1) >> BRICK_L_RES_BITS;
     const maxGz = (z + 1) >> BRICK_L_RES_BITS;
 
-    // 2. Iterate through all potential bricks (max 27, but usually 1, 2, 4, or 8)
+    const isNearSurface = value > 5 && value < 250;
     for (let gz = minGz; gz <= maxGz; gz++) {
       for (let gy = minGy; gy <= maxGy; gy++) {
         for (let gx = minGx; gx <= maxGx; gx++) {
-          
-          // Boundary check for the 128x128x128 grid
           if (gx < 0 || gx >= GRID_RES || gy < 0 || gy >= GRID_RES || gz < 0 || gz >= GRID_RES) continue;
 
           const gIdx = this.getGridIdx(gx, gy, gz);
-          
-          // 3. Calculate local coordinate in this specific brick's 10x10x10 space.
-          // The +1 accounts for the left/bottom/front padding.
           const lx = x - (gx * BRICK_L_RES) + 1;
           const ly = y - (gy * BRICK_L_RES) + 1;
           const lz = z - (gz * BRICK_L_RES) + 1;
 
-          // Check if it's the "primary" owner (interior 1-8)
-          const isInterior = (lx >= 1 && lx <= 8 && ly >= 1 && ly <= 8 && lz >= 1 && lz <= 8);
-
-          // 4. Update the Atlas if the brick is active.
-          // If it's the "interior" owner, we ensure the brick exists.
-          // If it's just a gutter update, we only update it if the neighbor already exists.
-          if (isInterior) {
+          if (isNearSurface) {
             this.ensureBrickAllocated(gx, gy, gz);
           }
 
