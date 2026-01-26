@@ -197,7 +197,7 @@ void main(void) {
       let width = rect.width * window.devicePixelRatio;
       let height = rect.height * window.devicePixelRatio;
       let focalLength = 0.5 * height / Math.tan(0.5 * FOV_Y * Math.PI / 180.0);
-      renderer2.setSize(rect.width, rect.height);
+      renderer2.setSize(rect.width, rect.height, false);
       material.uniforms.resolution.value.set(
         width,
         height,
