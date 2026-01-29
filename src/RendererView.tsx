@@ -30,6 +30,9 @@ const RendererView: Component<{
   let [ orbitControls, setOrbitControls, ] = createSignal<OrbitControls>();
   let [ transformControls, setTransformControls, ] = createSignal<TransformControls>();
   let scene = new THREE.Scene();
+  let light = new THREE.DirectionalLight();
+  light.position.set(1.0, 1.0, 1.0);
+  scene.add(light);
   let brickMapShaderCode = props.brickMap.writeShaderCode();
   let fragmentShaderCode = `
 precision highp float;

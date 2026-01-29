@@ -9,7 +9,7 @@ export class InsertPrimitivesMode implements Mode {
   constructor(params: ModeParams) {
     //
     this.overlayObject3D = createMemo(() => {
-      let geo = new THREE.BoxGeometry(100,100,100);
+      let geo = new THREE.BoxGeometry(1500,1500,1500);
       let mat = new THREE.MeshStandardMaterial({
         color: "blue",
       });
