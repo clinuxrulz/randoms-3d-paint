@@ -1,4 +1,4 @@
-import { Accessor, batch, Component, createSignal, onCleanup, onMount } from "solid-js";
+import { Accessor, batch, Component, createComputed, createSignal, onCleanup, onMount } from "solid-js";
 import * as THREE from "three";
 import { BrickMap } from "./BrickMap";
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
@@ -20,6 +20,7 @@ const RendererView: Component<{
   brickMap: BrickMap,
   onDragingEvent: (isDraging: boolean) => void,
   onInit: (controller: RendererViewController) => void,
+  disableOrbit: boolean,
 }> = (props) => {
   let [ canvas, setCanvas, ] = createSignal<HTMLCanvasElement>();
   let [ canvasSize, setCanvasSize, ] = createSignal<THREE.Vector2>();
@@ -37,7 +38,8 @@ precision highp sampler3D;
 
 uniform vec2 resolution;
 uniform float uFocalLength;
-uniform float uAngle;
+uniform mat4 viewMatrixInverse;
+uniform mat4 projectionMatrixInverse;
 
 //out vec4 fragColour;
 
@@ -83,28 +85,13 @@ vec3 normal(vec3 p) {
 
 void main(void) {
   float fl = uFocalLength;
-  float mn = min(resolution.x, resolution.y);
-  vec2 uv = (gl_FragCoord.xy - 0.5 * resolution) / mn;
-  if (false) {
-    gl_FragColor = vec4(1.0, 0.0, 0.0, 1.0);
-  }
-  if (false) {
-    vec3 p = vec3(uv.x*10240.0/3.0,uv.y*10240.0/3.0,201.0);
-    float v = map(p);
-    gl_FragColor = vec4(0.0, 0.0, 0.5*(sin(v*0.015)+1.0), 1.0);
-    return;
-  }
-  float ca = cos(uAngle * acos(-1.0) / 180.0);
-  float sa = sin(uAngle * acos(-1.0) / 180.0);
-  vec3 w = normalize(vec3(sa, 0.0, ca));
-  vec3 u = normalize(cross(vec3(0,1,0),w));
-  vec3 v = cross(w,u);
-  vec3 ro = vec3(5000.0 * sa, 0.0, 5000.0 * ca);
-  vec3 rd = normalize(
-    (gl_FragCoord.x - 0.5 * resolution.x) * u +
-    (gl_FragCoord.y - 0.5 * resolution.y) * v +
-    -fl * w
-  );
+  vec2 uv = gl_FragCoord.xy / resolution;
+  vec4 ndc = vec4(uv * 2.0 - 1.0, 1.0, 1.0);
+  vec4 viewPos = projectionMatrixInverse * ndc;
+  viewPos /= viewPos.w;
+  vec4 worldPos = viewMatrixInverse * viewPos;
+  vec3 ro = cameraPosition;
+  vec3 rd = normalize(worldPos.xyz - ro);
   float t = 0.0;
   bool hit = march(ro, rd, t);
   if (!hit) {
@@ -129,6 +116,9 @@ void main(void) {
     uniforms: {
       resolution: { value: new THREE.Vector2(), },
       uFocalLength: { value: 0.0, },
+      viewMatrixInverse: { value: new THREE.Matrix4() },
+      projectionMatrixInverse: { value: new THREE.Matrix4() },
+      cameraPosition: { value: new THREE.Vector3() },
     },
     fragmentShader: fragmentShaderCode,
   };
@@ -152,6 +142,14 @@ void main(void) {
         if (camera2 == undefined) {
           return;
         }
+        let oribitControls2 = orbitControls();
+        if (oribitControls2 == undefined) {
+          return;
+        }
+        oribitControls2.update(); 
+        material.uniforms.viewMatrixInverse.value.copy(camera2.matrixWorld);
+        material.uniforms.projectionMatrixInverse.value.copy(camera2.projectionMatrixInverse);
+        material.uniforms.cameraPosition.value.copy(camera2.position);
         fullScreenQuad.render(renderer2);
         renderer2.render(scene, camera2);
         isRendering = false;
@@ -186,7 +184,7 @@ void main(void) {
     let camera2 = new THREE.PerspectiveCamera(
       FOV_Y,
     );
-    camera2.position.set(10, 10, 10);
+    camera2.position.set(0, 0, 5000);
     camera2.lookAt(new THREE.Vector3(0.0, 0.0, 0.0));
     let renderer2 = new THREE.WebGLRenderer({
       canvas: canvas2,
@@ -221,10 +219,14 @@ void main(void) {
     let transformControls2 = new TransformControls(camera2, canvas2);
     let dummy = new THREE.Object3D();
     transformControls2.attach(dummy);
+    let [ transformDragging, setTransformDragging, ] = createSignal(false);
     transformControls2.addEventListener("dragging-changed", (e) => {
       let dragging = e.value as boolean;
+      setTransformDragging(dragging);
       props.onDragingEvent(dragging);
-      orbitControls.enabled = !dragging;
+    });
+    createComputed(() => {
+      orbitControls.enabled = !(transformDragging() || props.disableOrbit);
     });
     transformControls2.addEventListener("change", () => {
       rerender();

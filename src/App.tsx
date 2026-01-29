@@ -38,6 +38,7 @@ const App: Component = () => {
       {(Instructions) => (<Instructions/>)}
     </Show>
   );
+  let disableOrbit = createMemo(() => mode().disableOrbit?.() ?? false);
   let [ renderDiv, setRenderDiv, ] = createSignal<HTMLDivElement>();
   let [ isTransformDragging, setTransformDragging, ] = createSignal(false);
   // test data
@@ -176,6 +177,7 @@ const App: Component = () => {
           onInit={(controller) => {
             setRendererViewController(controller);
           }}
+          disableOrbit={disableOrbit()}
         />
       </div>
       <div

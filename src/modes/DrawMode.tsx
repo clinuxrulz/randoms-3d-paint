@@ -5,6 +5,7 @@ import { ModeParams } from "./ModeParams";
 
 export class DrawMode implements Mode {
   readonly instructions: Component;
+  readonly disableOrbit = () => true;
   
   constructor(params: ModeParams) {
     let hasCanvasSize = createMemo(() => params.canvasSize() != undefined);
