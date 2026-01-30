@@ -138,14 +138,33 @@ export class InsertPrimitivesMode implements Mode {
         }
         return d;
       };
+      let boundingBox = new THREE.Box3();
+      {
+        let first = true;
+        let boundingBox2 = new THREE.Box3();
+        for (let primitive of state.existingPrimitives) {
+          let object = primitive.value.object;
+          boundingBox2.setFromObject(object);
+          if (first) {
+            boundingBox.copy(boundingBox2);
+          } else {
+            boundingBox.union(boundingBox2);
+          }
+        }
+      }
       let sqrt_3 = Math.sqrt(3);
       let p = new THREE.Vector3();
-      const FOCUS = 256;
-      for (let i = 512 - (FOCUS>>1); i < 512 + (FOCUS>>1); ++i) {
+      let minI = Math.max(0, 512 + Math.floor(boundingBox.min.z / 10.0));
+      let maxI = Math.min(1023, 512 + Math.ceil(boundingBox.max.z / 10.0));
+      let minJ = Math.max(0, 512 + Math.floor(boundingBox.min.y / 10.0));
+      let maxJ = Math.min(1023, 512 + Math.ceil(boundingBox.max.y / 10.0));
+      let minK = Math.max(0, 512 + Math.floor(boundingBox.min.x / 10.0));
+      let maxK = Math.min(1023, 512 + Math.ceil(boundingBox.max.x / 10.0));
+      for (let i = minI; i <= maxI; ++i) {
         let z = (i - 512) * 10.0;
-        for (let j = 512 - (FOCUS>>1); j < 512 + (FOCUS>>1); ++j) {
+        for (let j = minJ; j <= maxJ; ++j) {
           let y = (j - 512) * 10.0;
-          for (let k = 512 - (FOCUS>>1); k < 512 + (FOCUS>>1); ++k) {
+          for (let k = minK; k <= maxK; ++k) {
             let x = (k - 512) * 10.0;
             p.set(x, y, z);
             let d = sdf(p) / (10.0 * sqrt_3);
