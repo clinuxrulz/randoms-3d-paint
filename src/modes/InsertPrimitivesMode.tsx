@@ -144,6 +144,11 @@ export class InsertPrimitivesMode implements Mode {
         let boundingBox2 = new THREE.Box3();
         for (let primitive of state.existingPrimitives) {
           let object = primitive.value.object;
+          if (object instanceof THREE.Mesh) {
+            if (object.geometry instanceof THREE.BufferGeometry) {
+              object.geometry.computeBoundingBox();
+            }
+          }
           boundingBox2.setFromObject(object);
           if (first) {
             boundingBox.copy(boundingBox2);
