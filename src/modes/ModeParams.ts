@@ -9,4 +9,5 @@ export type ModeParams = {
   pointerPos: Accessor<THREE.Vector2 | undefined>,
   pointerDown: Accessor<boolean>,
   updateSdf: () => void,
+  getThreeObjectsUnderScreenCoords: (screenCoords: THREE.Vector2) => Generator<THREE.Object3D>,
 };

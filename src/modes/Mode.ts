@@ -6,4 +6,5 @@ export interface Mode {
   readonly disableOrbit?: Accessor<boolean>;
   readonly overlayObject3D?: Accessor<THREE.Object3D | undefined>;
   readonly useTransformControlOnObject3D?: Accessor<THREE.Object3D | undefined>;
+  readonly onClick?: () => void;
 }

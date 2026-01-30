@@ -7,10 +7,14 @@ import { NoTrack } from "../util";
 
 type Primitive = "Sphere" | "Cube";
 
+const INIT_CUBE_SIZE = 1500.0;
+const INIT_SPHERE_RADIUS = 1000.0;
+
 export class InsertPrimitivesMode implements Mode {
   readonly instructions: Component;
   readonly overlayObject3D: Accessor<THREE.Object3D | undefined>;
   readonly useTransformControlOnObject3D: Accessor<THREE.Object3D | undefined>;
+  readonly onClick: () => void;
 
   constructor(params: ModeParams) {
     let [ state, setState, ] = createStore<{
@@ -18,9 +22,11 @@ export class InsertPrimitivesMode implements Mode {
         object: THREE.Object3D,
         cleanup: () => void,
       }>[],
+      movingExistingPrimitive: THREE.Object3D | undefined,
       insertingPrimitive: Primitive | undefined,
     }>({
       existingPrimitives: [],
+      movingExistingPrimitive: undefined,
       insertingPrimitive: undefined,
     });
     onCleanup(() => {
@@ -34,23 +40,27 @@ export class InsertPrimitivesMode implements Mode {
     };
     let placeIt = () => {
       let primitive = threePrimitive();
-      if (primitive == undefined) {
-        return;
+      if (primitive != undefined) {
+        primitive.autoCleanup = false;
+        batch(() => {
+          setState("insertingPrimitive", undefined);
+          setState(
+            "existingPrimitives",
+            (x) => [
+              ...x,
+              new NoTrack({
+                object: primitive.object,
+                cleanup: primitive.cleanup,
+              }),
+            ],
+          );
+        });
+      } else if (state.movingExistingPrimitive != undefined) {
+        setState("movingExistingPrimitive", undefined);
       }
-      primitive.autoCleanup = false;
-      batch(() => {
-        setState("insertingPrimitive", undefined);
-        setState(
-          "existingPrimitives",
-          (x) => [
-            ...x,
-            new NoTrack({
-              object: primitive.object,
-              cleanup: primitive.cleanup,
-            }),
-          ],
-        );
-      });
+    };
+    let finished = () => {
+      params.endMode();
     };
     let threePrimitive = createMemo(on(
       () => state.insertingPrimitive,
@@ -62,11 +72,11 @@ export class InsertPrimitivesMode implements Mode {
         let mat = new THREE.MeshStandardMaterial({ color: "blue", });
         switch (primitive) {
           case "Cube": {
-            geo = new THREE.BoxGeometry(1500.0, 1500.0, 1500.0);
+            geo = new THREE.BoxGeometry(INIT_CUBE_SIZE, INIT_CUBE_SIZE, INIT_CUBE_SIZE);
             break;
           }
           case "Sphere": {
-            geo = new THREE.SphereGeometry(1000.0);
+            geo = new THREE.SphereGeometry(INIT_SPHERE_RADIUS);
             break;
           }
           default:
@@ -91,7 +101,7 @@ export class InsertPrimitivesMode implements Mode {
     ));
     let instructions: Component = () => (
       <Switch>
-        <Match when={state.insertingPrimitive == undefined}>
+        <Match when={state.insertingPrimitive == undefined && state.movingExistingPrimitive == undefined}>
           <div>
             <label
               class="label bg-base-100"
@@ -111,8 +121,21 @@ export class InsertPrimitivesMode implements Mode {
           >
             Cube
           </button>
+          <div>
+            <label
+              class="label bg-base-100"
+            >
+              Otherwise if your finish, press the I am finished button:
+            </label>
+          </div>
+          <button
+            class="btn btn-primary"
+            onClick={() => finished()}
+          >
+            I am finished
+          </button>
         </Match>
-        <Match when={state.insertingPrimitive != undefined}>
+        <Match when={state.insertingPrimitive != undefined || state.movingExistingPrimitive != undefined}>
           <div>
             <label
               class="label bg-base-100"
@@ -143,10 +166,32 @@ export class InsertPrimitivesMode implements Mode {
       }
       return group;
     });;
-    let useTransformControlOnObject3D = createMemo(() => threePrimitive()?.object);
+    let useTransformControlOnObject3D = createMemo(() => threePrimitive()?.object ?? state.movingExistingPrimitive);
+    let onClick = () => {
+      if (state.movingExistingPrimitive != undefined) {
+        return;
+      }
+      if (state.insertingPrimitive != undefined) {
+        return;
+      }
+      let pt = params.pointerPos();
+      if (pt != undefined) {
+        let existingPrimitiveSet = new Set<THREE.Object3D>();
+        for (let primitive of state.existingPrimitives) {
+          existingPrimitiveSet.add(primitive.value.object);
+        }
+        for (let object of params.getThreeObjectsUnderScreenCoords(pt)) {
+          if (existingPrimitiveSet.has(object)) {
+            setState("movingExistingPrimitive", object);
+            break;
+          }
+        }
+      }
+    };
     //
     this.instructions = instructions;
     this.overlayObject3D = overlayObject3D;
     this.useTransformControlOnObject3D = useTransformControlOnObject3D;
+    this.onClick = onClick;
   }
 }

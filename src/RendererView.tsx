@@ -14,6 +14,7 @@ export type RendererViewController = {
   moveTransform: () => void,
   rotateTransform: () => void,
   scaleTransform: () => void,
+  getThreeObjectsUnderScreenCoords: (screenCoords: THREE.Vector2) => Generator<THREE.Object3D>,
 };
 
 const RendererView: Component<{
@@ -195,6 +196,25 @@ void main(void) {
     scaleTransform() {
       let transformControls2 = transformControls();
       transformControls2?.setMode("scale");
+    },
+    *getThreeObjectsUnderScreenCoords(screenCoords: THREE.Vector2) {
+      let canvasSize2 = canvasSize();
+      if (canvasSize2 == undefined) {
+        return;
+      }
+      let camera2 = camera();
+      if (camera2 == undefined) {
+        return;
+      }
+      let pt = new THREE.Vector2(
+        (screenCoords.x / canvasSize2.x) * 2.0 - 1.0,
+        -(screenCoords.y / canvasSize2.y) * 2.0 + 1.0,
+      );
+      let raycaster = new THREE.Raycaster();
+      raycaster.setFromCamera(pt, camera2);
+      for (let intersection of raycaster.intersectObject(scene, true)) {
+        yield intersection.object;
+      }
     },
   });
   onMount(() => {

@@ -32,6 +32,13 @@ const App: Component = () => {
       let controller = rendererViewController();
       controller?.onBrickMapChanged();
     },
+    *getThreeObjectsUnderScreenCoords(screenCoords) {
+      let result = rendererViewController()?.getThreeObjectsUnderScreenCoords(screenCoords);
+      if (result == undefined) {
+        return;
+      }
+      yield* result;
+    },
   };
   let mode = createMemo(() => new state.mkMode(modeParams));
   let ModeInstructions: Component = () => (
@@ -73,6 +80,7 @@ const App: Component = () => {
     }
   }*/
   //
+  let pointerDownStartTime: number | undefined;
   let onPointerDown = (e: PointerEvent) => {
     if (isTransformDragging()) {
       return;
@@ -89,6 +97,7 @@ const App: Component = () => {
       setState("pointerPos", new THREE.Vector2(x, y));
       setState("pointerDown", true);
     });
+    pointerDownStartTime = performance.now();
   }
   let onPointerMove = (e: PointerEvent) => {
     if (isTransformDragging()) {
@@ -112,14 +121,25 @@ const App: Component = () => {
     if (renderDiv2 == undefined) {
       return;
     }
+    let time: number | undefined = undefined;
+    if (pointerDownStartTime != undefined) {
+      time = performance.now() - pointerDownStartTime;
+    }
+    pointerDownStartTime = undefined;
     renderDiv2.releasePointerCapture(e.pointerId);
     let rect = renderDiv2.getBoundingClientRect();
     let x = e.clientX - rect.left;
     let y = e.clientY - rect.top;
     batch(() => {
-      setState("pointerPos", undefined);
+      //setState("pointerPos", undefined);
       setState("pointerDown", false);
     });
+    if (time != undefined && time < 300) {
+      onClick();
+    }
+  };
+  let onClick = () => {
+    mode().onClick?.();
   };
   let spin = () => {
     let angle = 0.0;
