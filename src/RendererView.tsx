@@ -22,6 +22,7 @@ const RendererView: Component<{
   onInit: (controller: RendererViewController) => void,
   disableOrbit: boolean,
   overlayObject3D: THREE.Object3D | undefined,
+  useTransformControlOnObject3D: THREE.Object3D | undefined,
 }> = (props) => {
   let [ canvas, setCanvas, ] = createSignal<HTMLCanvasElement>();
   let [ canvasSize, setCanvasSize, ] = createSignal<THREE.Vector2>();
@@ -240,8 +241,18 @@ void main(void) {
     orbitControls.update();
     orbitControls.addEventListener("change", () => rerender());
     let transformControls2 = new TransformControls(camera2, canvas2);
-    let dummy = new THREE.Object3D();
-    transformControls2.attach(dummy);
+    //let dummy = new THREE.Object3D();
+    //transformControls2.attach(dummy);
+    createComputed(on(
+      () => props.useTransformControlOnObject3D,
+      (useTransformControlOnObject3D) => {
+        if (useTransformControlOnObject3D == undefined) {
+          transformControls2.detach();
+        } else {
+          transformControls2.attach(useTransformControlOnObject3D);
+        }
+      },
+    ));
     let [ transformDragging, setTransformDragging, ] = createSignal(false);
     transformControls2.addEventListener("dragging-changed", (e) => {
       let dragging = e.value as boolean;
@@ -254,7 +265,7 @@ void main(void) {
     transformControls2.addEventListener("change", () => {
       rerender();
     });
-    scene.add(dummy);
+    //scene.add(dummy);
     scene.add(transformControls2.getHelper());
     batch(() => {
       setCamera(camera2);

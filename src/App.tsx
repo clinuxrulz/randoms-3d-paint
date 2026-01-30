@@ -41,9 +41,11 @@ const App: Component = () => {
   );
   let disableOrbit = createMemo(() => mode().disableOrbit?.() ?? false);
   let overlayObject3D = createMemo(() => mode().overlayObject3D?.());
+  let useTransformControlOnObject3D = createMemo(() => mode().useTransformControlOnObject3D?.());
   let [ renderDiv, setRenderDiv, ] = createSignal<HTMLDivElement>();
   let [ isTransformDragging, setTransformDragging, ] = createSignal(false);
   // test data
+  /*
   function test_sdf(x: number, y: number, z: number) {
     let dx = x;
     let dy = y;
@@ -69,7 +71,7 @@ const App: Component = () => {
         );
       }
     }
-  }
+  }*/
   //
   let onPointerDown = (e: PointerEvent) => {
     if (isTransformDragging()) {
@@ -181,6 +183,7 @@ const App: Component = () => {
           }}
           disableOrbit={disableOrbit()}
           overlayObject3D={overlayObject3D()}
+          useTransformControlOnObject3D={useTransformControlOnObject3D()}
         />
       </div>
       <div
