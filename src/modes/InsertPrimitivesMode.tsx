@@ -74,34 +74,61 @@ export class InsertPrimitivesMode implements Mode {
           orientation,
           scale,
         );
+        let sdf: (p: THREE.Vector3) => number;
         let q = new THREE.Quaternion();
         q.copy(orientation);
         q.conjugate();
-        let b = new THREE.Vector3(INIT_CUBE_SIZE, INIT_CUBE_SIZE, INIT_CUBE_SIZE).multiply(scale).multiplyScalar(0.5);
-        let p2 = new THREE.Vector3();
-        let q2 = new THREE.Vector3();
-        /*
-        float sdBox( vec3 p, vec3 b )
-        {
-          vec3 q = abs(p) - b;
-          return length(max(q,0.0)) + min(max(q.x,max(q.y,q.z)),0.0);
+        if (primitive2.primitive == "Sphere") {
+          let r = new THREE.Vector3(INIT_SPHERE_RADIUS, INIT_SPHERE_RADIUS, INIT_SPHERE_RADIUS).multiply(scale);
+          let p2 = new THREE.Vector3();
+          let p3 = new THREE.Vector3();
+          let rr = new THREE.Vector3().copy(r).multiply(r);
+          /*
+          float sdbEllipsoidV2( in vec3 p, in vec3 r )
+          {
+            float k1 = length(p/r);
+            float k2 = length(p/(r*r));
+            return k1*(k1-1.0)/k2;
+          }
+          */
+          sdf = (p: THREE.Vector3) => {
+            p2.copy(p);
+            p2.sub(origin);
+            p2.applyQuaternion(q);
+            p3.copy(p2);
+            p2.divide(r);
+            p3.divide(rr);
+            let k1 = p2.length();
+            let k2 = p3.length();
+            return k1 * (k1 - 1.0) / k2;
+          };
+        } else {
+          let b = new THREE.Vector3(INIT_CUBE_SIZE, INIT_CUBE_SIZE, INIT_CUBE_SIZE).multiply(scale).multiplyScalar(0.5);
+          let p2 = new THREE.Vector3();
+          let q2 = new THREE.Vector3();
+          /*
+          float sdBox( vec3 p, vec3 b )
+          {
+            vec3 q = abs(p) - b;
+            return length(max(q,0.0)) + min(max(q.x,max(q.y,q.z)),0.0);
+          }
+          */
+          sdf = (p: THREE.Vector3) => {
+            p2.copy(p);
+            p2.sub(origin);
+            p2.applyQuaternion(q);
+            q2.copy(p2);
+            q2.x = Math.abs(q2.x);
+            q2.y = Math.abs(q2.y);
+            q2.z = Math.abs(q2.z);
+            q2.sub(b);
+            let c = Math.min(Math.max(q2.x, q2.y, q2.z), 0.0);
+            q2.x = Math.max(q2.x, 0.0);
+            q2.y = Math.max(q2.y, 0.0);
+            q2.z = Math.max(q2.z, 0.0);
+            return q2.length() + c;
+          };
         }
-        */
-        let sdf = (p: THREE.Vector3) => {
-          p2.copy(p);
-          p2.sub(origin);
-          p2.applyQuaternion(q);
-          q2.copy(p2);
-          q2.x = Math.abs(q2.x);
-          q2.y = Math.abs(q2.y);
-          q2.z = Math.abs(q2.z);
-          q2.sub(b);
-          let c = Math.min(Math.max(q2.x, q2.y, q2.z), 0.0);
-          q2.x = Math.max(q2.x, 0.0);
-          q2.y = Math.max(q2.y, 0.0);
-          q2.z = Math.max(q2.z, 0.0);
-          return q2.length() + c;
-        };
         sdfs.push(sdf);
       }
       let sdf = (p: THREE.Vector3) => {
