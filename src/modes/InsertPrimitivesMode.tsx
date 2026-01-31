@@ -160,12 +160,12 @@ export class InsertPrimitivesMode implements Mode {
       }
       let sqrt_3 = Math.sqrt(3);
       let p = new THREE.Vector3();
-      let minI = Math.max(0, 512 + Math.floor(boundingBox.min.z / 10.0));
-      let maxI = Math.min(1023, 512 + Math.ceil(boundingBox.max.z / 10.0));
-      let minJ = Math.max(0, 512 + Math.floor(boundingBox.min.y / 10.0));
-      let maxJ = Math.min(1023, 512 + Math.ceil(boundingBox.max.y / 10.0));
-      let minK = Math.max(0, 512 + Math.floor(boundingBox.min.x / 10.0));
-      let maxK = Math.min(1023, 512 + Math.ceil(boundingBox.max.x / 10.0));
+      let minI = Math.max(0, 512 + Math.floor(boundingBox.min.z / 10.0)) - 1;
+      let maxI = Math.min(1023, 512 + Math.ceil(boundingBox.max.z / 10.0)) + 1;
+      let minJ = Math.max(0, 512 + Math.floor(boundingBox.min.y / 10.0)) - 1;
+      let maxJ = Math.min(1023, 512 + Math.ceil(boundingBox.max.y / 10.0)) + 1;
+      let minK = Math.max(0, 512 + Math.floor(boundingBox.min.x / 10.0)) - 1;
+      let maxK = Math.min(1023, 512 + Math.ceil(boundingBox.max.x / 10.0)) + 1;
       for (let i = minI; i <= maxI; ++i) {
         let z = (i - 512) * 10.0;
         for (let j = minJ; j <= maxJ; ++j) {

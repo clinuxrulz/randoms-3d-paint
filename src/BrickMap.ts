@@ -260,14 +260,21 @@ const float GRID_RES = ${GRID_RES.toFixed(1)};
 const float ATLAS_RES = ${ATLAS_RES.toFixed(1)};
 const float HALF_VOLUME_SIZE = ${((RES >> 1) * VOXEL_SIZE).toFixed(1)};
 
-float map(vec3 p) {
+float map(vec3 p, vec3 rd) {
     vec3 p_local = p + HALF_VOLUME_SIZE;
     // calc grid coords
     vec3 uvw = p_local / ${(GRID_RES * BRICK_L_RES * VOXEL_SIZE).toFixed(1)};
     vec4 brickInfo = texture(uIndirectionTex, uvw);
-    if (brickInfo.a == 0.0) return ${(0.5 * BRICK_L_RES * VOXEL_SIZE).toFixed(1)};
-
     vec3 cellLocal = fract(uvw * GRID_RES);
+    if (brickInfo.a == 0.0) {
+      vec3 p2 = cellLocal - 0.5;
+      vec3 m = 1.0 / rd;
+      vec3 n = p2 * m;
+      vec3 k = abs(m)*0.5;
+      vec3 t = -n + k;
+      float t2 = min(t.x, min(t.y, t.z));
+      return max(VOXEL_SIZE,t2*${(BRICK_L_RES * VOXEL_SIZE).toFixed(1)});
+    }
 
     // Map the 0.0->1.0 logical range to the 1.0->9.0 physical range (the padding)
     // Physical coordinate = (BrickIndex * 10.0) + 1.0 (offset) + (local * 8.0)

@@ -66,7 +66,7 @@ bool march(vec3 ro, vec3 rd, out float t) {
     t = 0.0;
     for(int i = 0; i < MAX_STEPS; i++) {
         vec3 p = ro + rd * t;
-        float d = map(p);
+        float d = map(p, rd);
         
         if(d < MIN_DIST) {
             return true;
@@ -84,10 +84,11 @@ bool march(vec3 ro, vec3 rd, out float t) {
 vec3 normal(vec3 p) {
     const float eps = 0.1;
     const vec2 h = vec2(eps, 0);
+    const vec3 z = vec3(0.0);
     return normalize(vec3(
-        map(p + h.xyy) - map(p - h.xyy),
-        map(p + h.yxy) - map(p - h.yxy),
-        map(p + h.yyx) - map(p - h.yyx)
+        map(p + h.xyy, z) - map(p - h.xyy, z),
+        map(p + h.yxy, z) - map(p - h.yxy, z),
+        map(p + h.yyx, z) - map(p - h.yyx, z)
     ));
 }
 
