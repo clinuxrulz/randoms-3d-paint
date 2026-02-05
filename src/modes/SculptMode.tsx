@@ -99,14 +99,6 @@ function drawInBrickmap(brickMap: BrickMap, pt: THREE.Vector3) {
   for (let i = -r-2; i <= r+2; ++i) {
     for (let j = -r-2; j <= r+2; ++j) {
       for (let k = -r-2; k <= r+2; ++k) {
-        let a = Math.sqrt(i*i + j*j + k*k) - r;
-        a /= Math.sqrt(3);
-        if (a < -1.0 || a > 1.0) {
-          continue;
-        }
-        let val = 128 - Math.floor(Math.max(-1, Math.min(1, a)) * 127);
-        if (val < 1) val = 1; 
-        if (val > 255) val = 255;
         let x = cx + k;
         let y = cy + j;
         let z = cz + i;
@@ -117,6 +109,17 @@ function drawInBrickmap(brickMap: BrickMap, pt: THREE.Vector3) {
         ) {
           continue;
         }
+        let a = Math.sqrt(i*i + j*j + k*k) - r;
+        a /= Math.sqrt(3);
+        let b = brickMap.get(x,y,z);
+        /*
+        if (a < -1.0 || a > 1.0) {
+          continue;
+        }*/
+        let val = 128 - Math.floor(Math.max(-1, Math.min(1, -a)) * 127);
+        val = Math.min(val, b);
+        if (val < 1) val = 1; 
+        if (val > 255) val = 255;
         brickMap.set(
           x,
           y,

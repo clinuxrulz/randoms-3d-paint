@@ -73,7 +73,8 @@ export class BrickMap {
     
     let aIdx = this.brickMap.get(gIdx);
     if (aIdx == undefined) {
-      return 0;
+      let state = this.indirectionData[(gIdx * 4) + 3];
+      return state >= 128 ? 255 : 0;
     }
 
     const ax = aIdx % BRICKS_PER_RES;
@@ -92,6 +93,7 @@ export class BrickMap {
     return this.atlasData[atlasPos];
   }
 
+  private _set_collapse = { allPositive: false, allNegative: false };
   set(x: number, y: number, z: number, value: number) {
     // sweep adjacent bricks incase coord lands on a gutter
     const minGx = (x - 1) >> BRICK_L_RES_BITS;
@@ -121,7 +123,19 @@ export class BrickMap {
           this.ensureBrickAllocated(gx, gy, gz);
           if (this.brickMap.has(gIdx)) {
             const aIdx = this.brickMap.get(gIdx)!;
-            this.writeToAtlas(aIdx, lx, ly, lz, value);
+            let checkForCollapse = (
+              lx == BRICK_P_RES-1 &&
+              ly == BRICK_P_RES-1 &&
+              lz == BRICK_P_RES-1
+            );
+            this.writeToAtlas(aIdx, lx, ly, lz, value, checkForCollapse, this._set_collapse);
+            if (checkForCollapse) {
+              let allPositive = this._set_collapse.allPositive;
+              let allNegative = this._set_collapse.allNegative;
+              if (allPositive || allNegative) {
+                this.deallocateBrick(gIdx, allNegative);
+              }
+            }
           }
         }
       }
@@ -226,9 +240,32 @@ export class BrickMap {
 
   private ensureBrickAllocated(gx: number, gy: number, gz: number) {
     const gIdx = this.getGridIdx(gx, gy, gz);
+    let a = this.indirectionData[(gIdx<<2)+3];
     if (!this.brickMap.has(gIdx)) {
       const aIdx = this.freeBricks.pop();
       if (aIdx === undefined) return;
+
+      if (a == 128.0) {
+        const ax = aIdx % BRICKS_PER_RES;
+        const ay = Math.floor(aIdx / BRICKS_PER_RES) % BRICKS_PER_RES;
+        const az = Math.floor(aIdx / (BRICKS_PER_RES * BRICKS_PER_RES));
+        let at =
+          (az * BRICK_P_RES) << (ATLAS_RES_BITS + ATLAS_RES_BITS) |
+          (ay * BRICK_P_RES) << ATLAS_RES_BITS |
+          (ax * BRICK_P_RES);
+        let stepK = 1;
+        let stepJ = 1 << ATLAS_RES_BITS;
+        let stepI = 1 << (ATLAS_RES_BITS + ATLAS_RES_BITS);
+        for (let i = 0; i < BRICK_P_RES; ++i, at += stepI) {
+          let at2 = at;
+          for (let j = 0; j < BRICK_P_RES; ++j, at2 += stepJ) {
+            let at3 = at2;
+            for (let k = 0; k < BRICK_P_RES; ++k, at3 += stepK) {
+              this.atlasData[at3] = 255;
+            }
+          }
+        }
+      }
 
       this.brickMap.set(gIdx, aIdx);
       
@@ -241,17 +278,82 @@ export class BrickMap {
     }
   }
 
-  private writeToAtlas(aIdx: number, lx: number, ly: number, lz: number, val: number) {
+  private deallocateBrick(gIdx: number, isSolid: boolean) {
+    let aIdx = this.brickMap.get(gIdx);
+    if (aIdx != undefined) {
+      this.brickMap.delete(gIdx);
+      this.freeBricks.push(aIdx);
+      let iOffset = gIdx << 2;
+      this.indirectionData[iOffset + 3] = isSolid ? 128 : 0;
+      const ax = aIdx % BRICKS_PER_RES;
+      const ay = Math.floor(aIdx / BRICKS_PER_RES) % BRICKS_PER_RES;
+      const az = Math.floor(aIdx / (BRICKS_PER_RES * BRICKS_PER_RES));
+      let at =
+        (az * BRICK_P_RES) << (ATLAS_RES_BITS + ATLAS_RES_BITS) |
+        (ay * BRICK_P_RES) << ATLAS_RES_BITS |
+        (ax * BRICK_P_RES);
+      let stepK = 1;
+      let stepJ = 1 << ATLAS_RES_BITS;
+      let stepI = 1 << (ATLAS_RES_BITS + ATLAS_RES_BITS);
+      for (let i = 0; i < BRICK_P_RES; ++i, at += stepI) {
+        let at2 = at;
+        for (let j = 0; j < BRICK_P_RES; ++j, at2 += stepJ) {
+          let at3 = at2;
+          for (let k = 0; k < BRICK_P_RES; ++k, at3 += stepK) {
+            this.atlasData[at3] = 0;
+          }
+        }
+      }
+    }
+  }
+
+  private writeToAtlas(aIdx: number, lx: number, ly: number, lz: number, val: number, checkForCollapse: boolean, out: { allPositive: boolean, allNegative: boolean }) {
     const ax = aIdx % BRICKS_PER_RES;
     const ay = Math.floor(aIdx / BRICKS_PER_RES) % BRICKS_PER_RES;
     const az = Math.floor(aIdx / (BRICKS_PER_RES * BRICKS_PER_RES));
-
     const atlasPos = (
       (az * BRICK_P_RES + lz) * ATLAS_RES * ATLAS_RES +
       (ay * BRICK_P_RES + ly) * ATLAS_RES +
       (ax * BRICK_P_RES + lx)
     );
     this.atlasData[atlasPos] = val;
+    if (checkForCollapse) {
+      // sweep to check if atlas can be collapsed
+      let at =
+        (az * BRICK_P_RES) << (ATLAS_RES_BITS + ATLAS_RES_BITS) |
+        (ay * BRICK_P_RES) << ATLAS_RES_BITS |
+        (ax * BRICK_P_RES);
+      let stepK = 1;
+      let stepJ = 1 << ATLAS_RES_BITS;
+      let stepI = 1 << (ATLAS_RES_BITS + ATLAS_RES_BITS);
+      let allPositive = true;
+      let allNegative = true;
+      escape:
+      for (let i = 0; i < BRICK_P_RES; ++i, at += stepI) {
+        let at2 = at;
+        for (let j = 0; j < BRICK_P_RES; ++j, at2 += stepJ) {
+          let at3 = at2;
+          for (let k = 0; k < BRICK_P_RES; ++k, at3 += stepK) {
+            //let val = 128 - Math.floor(Math.max(-1, Math.min(1, a)) * 127);
+            let val = this.atlasData[at3];
+            if (val < 128) {
+              allNegative = false;
+              if (!allPositive) {
+                break escape;
+              }
+            }
+            if (val > 128) {
+              allPositive = false;
+              if (!allNegative) {
+                break escape;
+              }
+            }
+          }
+        }
+      }
+      out.allPositive = allPositive;
+      out.allNegative = allNegative;
+    }
   }
 
   initTexturesThreeJs(
@@ -382,31 +484,28 @@ const float HALF_VOLUME_SIZE = ${((RES >> 1) * VOXEL_SIZE).toFixed(1)};
 
 float map(vec3 p, vec3 rd) {
     vec3 p_local = p + HALF_VOLUME_SIZE;
-    // calc grid coords
     vec3 uvw = p_local / ${(GRID_RES * BRICK_L_RES * VOXEL_SIZE).toFixed(1)};
     vec4 brickInfo = texture(uIndirectionTex, uvw);
     vec3 cellLocal = fract(uvw * GRID_RES);
-    if (brickInfo.a == 0.0) {
-      vec3 p2 = cellLocal - 0.5;
-      vec3 m = 1.0 / rd;
-      vec3 n = p2 * m;
-      vec3 k = abs(m)*0.5;
-      vec3 t = -n + k;
-      float t2 = min(t.x, min(t.y, t.z));
-      return max(VOXEL_SIZE,t2*${(BRICK_L_RES * VOXEL_SIZE).toFixed(1)});
+    if (brickInfo.a > 0.9) {
+        vec3 brickBase = brickInfo.xyz * 255.0 * 10.0;
+        vec3 atlasVoxelPos = brickBase + 1.0 + (cellLocal * 8.0);
+        vec3 atlasUVW = atlasVoxelPos / ATLAS_RES;
+        float val = texture(uAtlasTex, atlasUVW).r;
+        return (0.5 - val) * 2.0 * VOXEL_SIZE;
     }
+    vec3 p2 = cellLocal - 0.5;
+    vec3 m = 1.0 / rd;
+    vec3 n = p2 * m;
+    vec3 k = abs(m) * 0.5;
+    vec3 t = -n + k;
+    float distToBound = min(t.x, min(t.y, t.z));
+    float jumpDist = max(VOXEL_SIZE, distToBound * ${(BRICK_L_RES * VOXEL_SIZE).toFixed(1)});
 
-    // Map the 0.0->1.0 logical range to the 1.0->9.0 physical range (the padding)
-    // Physical coordinate = (BrickIndex * 10.0) + 1.0 (offset) + (local * 8.0)
-    vec3 brickBase = brickInfo.xyz * 255.0 * 10.0;
-    vec3 atlasVoxelPos = brickBase + 1.0 + (cellLocal * 8.0);
-    
-    vec3 atlasUVW = atlasVoxelPos / ATLAS_RES;
-
-    // hardware based trilinear interpolation
-    float val = texture(uAtlasTex, atlasUVW).r;
-    //
-    return (0.5 - val) * 2.0 * VOXEL_SIZE;
+    if (brickInfo.a > 0.4) {
+        return -jumpDist;
+    }
+    return jumpDist;
 }
 `
     );
