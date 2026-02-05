@@ -43,14 +43,29 @@ export class SculptMode implements Mode {
           virtualBrickMap.copy(params.brickMap);
           return;
         }
+        let hasPointUnderRay = createMemo(() => pointUnderRay() != undefined);
         createComputed(on(
-          pointUnderRay,
-          (pointUnderRay) => {
-            if (pointUnderRay == undefined) {
+          hasPointUnderRay,
+          (hasPointUnderRay) => {
+            if (!hasPointUnderRay) {
               return;
             }
-            drawInBrickmap(params.brickMap, pointUnderRay);
+            let pointUnderRay2 = pointUnderRay as Accessor<NonNullable<ReturnType<typeof pointUnderRay>>>;
+            drawInBrickmap(params.brickMap, pointUnderRay2());
             params.updateSdf();
+            let lastPt = pointUnderRay2();
+            createComputed(on(
+              pointUnderRay2,
+              (pointUnderRay) => {
+                if (lastPt.distanceTo(pointUnderRay) < 15.0) {
+                  return;
+                }
+                strokeInBrickmap(params.brickMap, lastPt, pointUnderRay);
+                params.updateSdf();
+                lastPt = pointUnderRay;
+              },
+              { defer: true, },
+            ));
           },
         ));
       },
@@ -130,3 +145,61 @@ function drawInBrickmap(brickMap: BrickMap, pt: THREE.Vector3) {
     }
   }
 };
+
+function strokeInBrickmap(brickMap: BrickMap, p1: THREE.Vector3, p2: THREE.Vector3) {
+  let pt1x = 512 + Math.round(p1.x/10);
+  let pt1y = 512 + Math.round(p1.y/10);
+  let pt1z = 512 + Math.round(p1.z/10);
+  let pt2x = 512 + Math.round(p2.x/10);
+  let pt2y = 512 + Math.round(p2.y/10);
+  let pt2z = 512 + Math.round(p2.z/10);
+  let r = 4;
+  let ux = pt2x - pt1x;
+  let uy = pt2y - pt1y;
+  let uz = pt2z - pt1z;
+  let uu = ux * ux + uy * uy + uz * uz;
+  let sdf = (x: number, y: number, z: number) => {
+    let t = ((x - pt1x) * ux + (y - pt1y) * uy + (z - pt1z) * uz) / uu;
+    t = Math.max(0.0, Math.min(1.0, t));
+    let px = pt1x + ux * t;
+    let py = pt1y + uy * t;
+    let pz = pt1z + uz * t;
+    let dx = x - px;
+    let dy = y - py;
+    let dz = z - pz;
+    return Math.sqrt(dx*dx + dy*dy + dz*dz) - r;
+  };
+  let min_x = Math.min(pt1x, pt2x) - r;
+  let max_x = Math.max(pt1x, pt2x) + r;
+  let min_y = Math.min(pt1y, pt2y) - r;
+  let max_y = Math.max(pt1y, pt2y) + r;
+  let min_z = Math.min(pt1z, pt2z) - r;
+  let max_z = Math.max(pt1z, pt2z) + r;
+  for (let i = min_z-2; i <= max_z+2; ++i) {
+    for (let j = min_y-2; j <= max_y+2; ++j) {
+      for (let k = min_x-2; k <= max_x+2; ++k) {
+        if (
+          i < 0 || i >= 1024 ||
+          j < 0 || j >= 1024 ||
+          k < 0 || k >= 1024
+        ) {
+          continue;
+        }
+        let a = sdf(k, j, i);
+        a /= Math.sqrt(3);
+        let val = 128 - Math.floor(Math.max(-1, Math.min(1, -a)) * 127);
+        if (val < 1) val = 1; 
+        if (val > 255) val = 255;
+        let oldVal = brickMap.get(k, j, i);
+        val = Math.min(val, oldVal);
+        brickMap.set(
+          k,
+          j,
+          i,
+          val,
+        );
+      }
+    }
+  }
+};
+
