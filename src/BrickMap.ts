@@ -93,28 +93,32 @@ export class BrickMap {
   }
 
   set(x: number, y: number, z: number, value: number) {
+    // sweep adjacent bricks incase coord lands on a gutter
     const minGx = (x - 1) >> BRICK_L_RES_BITS;
     const maxGx = (x + 1) >> BRICK_L_RES_BITS;
     const minGy = (y - 1) >> BRICK_L_RES_BITS;
     const maxGy = (y + 1) >> BRICK_L_RES_BITS;
     const minGz = (z - 1) >> BRICK_L_RES_BITS;
     const maxGz = (z + 1) >> BRICK_L_RES_BITS;
-
-    const isNearSurface = value > 5 && value < 250;
     for (let gz = minGz; gz <= maxGz; gz++) {
       for (let gy = minGy; gy <= maxGy; gy++) {
         for (let gx = minGx; gx <= maxGx; gx++) {
           if (gx < 0 || gx >= GRID_RES || gy < 0 || gy >= GRID_RES || gz < 0 || gz >= GRID_RES) continue;
-
+          // get the local coords within the brick
           const gIdx = this.getGridIdx(gx, gy, gz);
           const lx = x - (gx * BRICK_L_RES) + 1;
           const ly = y - (gy * BRICK_L_RES) + 1;
           const lz = z - (gz * BRICK_L_RES) + 1;
-
-          if (isNearSurface) {
-            this.ensureBrickAllocated(gx, gy, gz);
+          // if coords are outside of the brick and its gutter, skip it
+          if (
+            lx < 0 || lx >= BRICK_P_RES ||
+            ly < 0 || ly >= BRICK_P_RES ||
+            lz < 0 || lz >= BRICK_P_RES
+          ) {
+            continue;
           }
-
+          // otherwise write to it
+          this.ensureBrickAllocated(gx, gy, gz);
           if (this.brickMap.has(gIdx)) {
             const aIdx = this.brickMap.get(gIdx)!;
             this.writeToAtlas(aIdx, lx, ly, lz, value);
