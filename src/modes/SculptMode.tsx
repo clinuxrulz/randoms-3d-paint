@@ -13,9 +13,11 @@ export class SculptMode implements Mode {
   constructor(params: ModeParams) {
     let [ state, setState, ] = createStore<{
       brushSize: number,
+      softness: number,
       isNegativeBrush: boolean,
     }>({
       brushSize: 8,
+      softness: 0.0,
       isNegativeBrush: true,
     });
     let virtualBrickMap = new BrickMap().copy(params.brickMap);
@@ -59,7 +61,7 @@ export class SculptMode implements Mode {
               return;
             }
             let pointUnderRay2 = pointUnderRay as Accessor<NonNullable<ReturnType<typeof pointUnderRay>>>;
-            drawInBrickmap(params.brickMap, pointUnderRay2(), state.isNegativeBrush, state.brushSize);
+            drawInBrickmap(params.brickMap, pointUnderRay2(), state.isNegativeBrush, state.brushSize, state.softness * state.brushSize / 8.0);
             params.updateSdf();
             let lastPt = pointUnderRay2();
             createComputed(on(
@@ -68,7 +70,7 @@ export class SculptMode implements Mode {
                 if (lastPt.distanceTo(pointUnderRay) < 15.0) {
                   return;
                 }
-                strokeInBrickmap(params.brickMap, lastPt, pointUnderRay, state.isNegativeBrush, state.brushSize);
+                strokeInBrickmap(params.brickMap, lastPt, pointUnderRay, state.isNegativeBrush, state.brushSize, state.softness * state.brushSize / 8.0);
                 params.updateSdf();
                 lastPt = pointUnderRay;
               },
@@ -139,10 +141,25 @@ export class SculptMode implements Mode {
               if (Number.isNaN(x)) {
                 return;
               }
-              if (x == state.brushSize) {
+              setState("brushSize", x);
+            }}
+          />
+        </label>
+        <label class="label">
+          Softness:
+          <input
+            type="range"
+            class="range"
+            min="0"
+            max="1"
+            step="0.05"
+            value={state.softness}
+            onInput={(e) => {
+              let x = Number.parseFloat(e.currentTarget.value);
+              if (Number.isNaN(x)) {
                 return;
               }
-              setState("brushSize", x);
+              setState("softness", x);
             }}
           />
         </label>
@@ -174,14 +191,40 @@ export class SculptMode implements Mode {
   }
 }
 
-function drawInBrickmap(brickMap: BrickMap, pt: THREE.Vector3, negative: boolean, brushSize: number) {
+function smoothUnion(a: number, b: number, k: number): number {
+  if (k == 0.0) {
+    return Math.min(a, b);
+  }
+  k *= 4.0;
+  let h = Math.max(k - Math.abs(a - b), 0.0);
+  return Math.min(a, b) - h*h*0.25/k;
+}
+
+function smoothSubtraction(a: number, b: number, k: number): number {
+  return -smoothUnion(-a, b, k);
+}
+
+function brickMapReadSDF(brickMap: BrickMap, x: number, y: number, z: number): number {
+  let val = brickMap.get(x, y, z);
+  return (128.0 - val) / 127.0;
+}
+
+function brickMapWriteSDF(brickMap: BrickMap, x: number, y: number, z: number, a: number) {
+  let val = 128 - Math.floor(Math.max(-1, Math.min(1, a)) * 127);
+  if (val < 1) val = 1; 
+  if (val > 255) val = 255;
+  brickMap.set(x, y, z, val);
+}
+
+function drawInBrickmap(brickMap: BrickMap, pt: THREE.Vector3, negative: boolean, brushSize: number, softness: number) {
   let cx = 512 + Math.round(pt.x / 10.0);
   let cy = 512 + Math.round(pt.y / 10.0);
   let cz = 512 + Math.round(pt.z / 10.0);
   let r = Math.round(0.5 * brushSize);
-  for (let i = -r-2; i <= r+2; ++i) {
-    for (let j = -r-2; j <= r+2; ++j) {
-      for (let k = -r-2; k <= r+2; ++k) {
+  let r2 = r + Math.ceil(softness);
+  for (let i = -r2-2; i <= r2+2; ++i) {
+    for (let j = -r2-2; j <= r2+2; ++j) {
+      for (let k = -r2-2; k <= r2+2; ++k) {
         let x = cx + k;
         let y = cy + j;
         let z = cz + i;
@@ -194,30 +237,20 @@ function drawInBrickmap(brickMap: BrickMap, pt: THREE.Vector3, negative: boolean
         }
         let a = Math.sqrt(i*i + j*j + k*k) - r;
         a /= Math.sqrt(3);
-        let b = brickMap.get(x,y,z);
+        let b = brickMapReadSDF(brickMap, x, y, z);
+        let c: number;
         if (negative) {
-          a = -a;
-        }
-        let val = 128 - Math.floor(Math.max(-1, Math.min(1, a)) * 127);
-        if (negative) {
-          val = Math.min(val, b);
+          c = smoothSubtraction(b, a, softness);
         } else {
-          val = Math.max(val, b);
+          c = smoothUnion(b, a, softness);
         }
-        if (val < 1) val = 1; 
-        if (val > 255) val = 255;
-        brickMap.set(
-          x,
-          y,
-          z,
-          val,
-        );
+        brickMapWriteSDF(brickMap, x, y, z, c);
       }
     }
   }
 };
 
-function strokeInBrickmap(brickMap: BrickMap, p1: THREE.Vector3, p2: THREE.Vector3, negative: boolean, brushSize: number) {
+function strokeInBrickmap(brickMap: BrickMap, p1: THREE.Vector3, p2: THREE.Vector3, negative: boolean, brushSize: number, softness: number) {
   let pt1x = 512 + Math.round(p1.x/10);
   let pt1y = 512 + Math.round(p1.y/10);
   let pt1z = 512 + Math.round(p1.z/10);
@@ -240,12 +273,13 @@ function strokeInBrickmap(brickMap: BrickMap, p1: THREE.Vector3, p2: THREE.Vecto
     let dz = z - pz;
     return Math.sqrt(dx*dx + dy*dy + dz*dz) - r;
   };
-  let min_x = Math.min(pt1x, pt2x) - r;
-  let max_x = Math.max(pt1x, pt2x) + r;
-  let min_y = Math.min(pt1y, pt2y) - r;
-  let max_y = Math.max(pt1y, pt2y) + r;
-  let min_z = Math.min(pt1z, pt2z) - r;
-  let max_z = Math.max(pt1z, pt2z) + r;
+  let r2 = r + Math.ceil(softness);
+  let min_x = Math.min(pt1x, pt2x) - r2;
+  let max_x = Math.max(pt1x, pt2x) + r2;
+  let min_y = Math.min(pt1y, pt2y) - r2;
+  let max_y = Math.max(pt1y, pt2y) + r2;
+  let min_z = Math.min(pt1z, pt2z) - r2;
+  let max_z = Math.max(pt1z, pt2z) + r2;
   for (let i = min_z-2; i <= max_z+2; ++i) {
     for (let j = min_y-2; j <= max_y+2; ++j) {
       for (let k = min_x-2; k <= max_x+2; ++k) {
@@ -258,24 +292,14 @@ function strokeInBrickmap(brickMap: BrickMap, p1: THREE.Vector3, p2: THREE.Vecto
         }
         let a = sdf(k, j, i);
         a /= Math.sqrt(3);
+        let b = brickMapReadSDF(brickMap, k, j, i);
+        let c: number;
         if (negative) {
-          a = -a;
-        }
-        let val = 128 - Math.floor(Math.max(-1, Math.min(1, a)) * 127);
-        if (val < 1) val = 1; 
-        if (val > 255) val = 255;
-        let oldVal = brickMap.get(k, j, i);
-        if (negative) {
-          val = Math.min(val, oldVal);
+          c = smoothSubtraction(b, a, softness);
         } else {
-          val = Math.max(val, oldVal);
+          c = smoothUnion(b, a, softness);
         }
-        brickMap.set(
-          k,
-          j,
-          i,
-          val,
-        );
+        brickMapWriteSDF(brickMap, k, j, i, c);
       }
     }
   }
