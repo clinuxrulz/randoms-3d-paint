@@ -3,6 +3,7 @@ import * as THREE from "three";
 import { Mode } from "./Mode";
 import { ModeParams } from "./ModeParams";
 import { BrickMap } from "../BrickMap";
+import { createStore } from "solid-js/store";
 
 export class SculptMode implements Mode {
   instructions: Component;
@@ -10,6 +11,11 @@ export class SculptMode implements Mode {
   overlayObject3D: Accessor<THREE.Object3D<THREE.Object3DEventMap> | undefined>;
 
   constructor(params: ModeParams) {
+    let [ state, setState, ] = createStore<{
+      isNegativeBrush: boolean,
+    }>({
+      isNegativeBrush: true,
+    });
     let virtualBrickMap = new BrickMap().copy(params.brickMap);
     let ray = createMemo(() => {
       let pointerPos = params.pointerPos();
@@ -51,7 +57,7 @@ export class SculptMode implements Mode {
               return;
             }
             let pointUnderRay2 = pointUnderRay as Accessor<NonNullable<ReturnType<typeof pointUnderRay>>>;
-            drawInBrickmap(params.brickMap, pointUnderRay2());
+            drawInBrickmap(params.brickMap, pointUnderRay2(), state.isNegativeBrush);
             params.updateSdf();
             let lastPt = pointUnderRay2();
             createComputed(on(
@@ -60,7 +66,7 @@ export class SculptMode implements Mode {
                 if (lastPt.distanceTo(pointUnderRay) < 15.0) {
                   return;
                 }
-                strokeInBrickmap(params.brickMap, lastPt, pointUnderRay);
+                strokeInBrickmap(params.brickMap, lastPt, pointUnderRay, state.isNegativeBrush);
                 params.updateSdf();
                 lastPt = pointUnderRay;
               },
@@ -79,12 +85,43 @@ export class SculptMode implements Mode {
     });
     let mesh = new THREE.Mesh(geo, mat);
     let instructions: Component = () => (
-      <button
-        class="btn btn-primary"
-        onClick={() => params.endMode()}
-      >
-        End Sculpt Mode
-      </button>
+      <>
+        <div class="join">
+          <label class="label">
+            Brush
+            <input
+              type="radio"
+              name="BrushSign"
+              class="btn btn-sm join-item"
+              aria-label="-"
+              checked={state.isNegativeBrush}
+              onChange={(e) => {
+                if (e.currentTarget.checked) {
+                  setState("isNegativeBrush", true);
+                }
+              }}
+            />
+            <input
+              type="radio"
+              name="BrushSign"
+              class="btn btn-sm join-item"
+              aria-label="+"
+              checked={!state.isNegativeBrush}
+              onChange={(e) => {
+                if (e.currentTarget.checked) {
+                  setState("isNegativeBrush", false);
+                }
+              }}
+            />
+          </label>
+        </div>
+        <button
+          class="btn btn-primary"
+          onClick={() => params.endMode()}
+        >
+          End Sculpt Mode
+        </button>
+      </>
     );
     let disableOrbit = createMemo(() => pointUnderRay() != undefined);
     let overlayObject3D = createMemo(() => {
@@ -106,7 +143,7 @@ export class SculptMode implements Mode {
   }
 }
 
-function drawInBrickmap(brickMap: BrickMap, pt: THREE.Vector3) {
+function drawInBrickmap(brickMap: BrickMap, pt: THREE.Vector3, negative: boolean) {
   let cx = 512 + Math.round(pt.x / 10.0);
   let cy = 512 + Math.round(pt.y / 10.0);
   let cz = 512 + Math.round(pt.z / 10.0);
@@ -127,12 +164,15 @@ function drawInBrickmap(brickMap: BrickMap, pt: THREE.Vector3) {
         let a = Math.sqrt(i*i + j*j + k*k) - r;
         a /= Math.sqrt(3);
         let b = brickMap.get(x,y,z);
-        /*
-        if (a < -1.0 || a > 1.0) {
-          continue;
-        }*/
-        let val = 128 - Math.floor(Math.max(-1, Math.min(1, -a)) * 127);
-        val = Math.min(val, b);
+        if (negative) {
+          a = -a;
+        }
+        let val = 128 - Math.floor(Math.max(-1, Math.min(1, a)) * 127);
+        if (negative) {
+          val = Math.min(val, b);
+        } else {
+          val = Math.max(val, b);
+        }
         if (val < 1) val = 1; 
         if (val > 255) val = 255;
         brickMap.set(
@@ -146,7 +186,7 @@ function drawInBrickmap(brickMap: BrickMap, pt: THREE.Vector3) {
   }
 };
 
-function strokeInBrickmap(brickMap: BrickMap, p1: THREE.Vector3, p2: THREE.Vector3) {
+function strokeInBrickmap(brickMap: BrickMap, p1: THREE.Vector3, p2: THREE.Vector3, negative: boolean) {
   let pt1x = 512 + Math.round(p1.x/10);
   let pt1y = 512 + Math.round(p1.y/10);
   let pt1z = 512 + Math.round(p1.z/10);
@@ -187,11 +227,18 @@ function strokeInBrickmap(brickMap: BrickMap, p1: THREE.Vector3, p2: THREE.Vecto
         }
         let a = sdf(k, j, i);
         a /= Math.sqrt(3);
-        let val = 128 - Math.floor(Math.max(-1, Math.min(1, -a)) * 127);
+        if (negative) {
+          a = -a;
+        }
+        let val = 128 - Math.floor(Math.max(-1, Math.min(1, a)) * 127);
         if (val < 1) val = 1; 
         if (val > 255) val = 255;
         let oldVal = brickMap.get(k, j, i);
-        val = Math.min(val, oldVal);
+        if (negative) {
+          val = Math.min(val, oldVal);
+        } else {
+          val = Math.max(val, oldVal);
+        }
         brickMap.set(
           k,
           j,
