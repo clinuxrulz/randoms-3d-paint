@@ -12,8 +12,10 @@ export class SculptMode implements Mode {
 
   constructor(params: ModeParams) {
     let [ state, setState, ] = createStore<{
+      brushSize: number,
       isNegativeBrush: boolean,
     }>({
+      brushSize: 8,
       isNegativeBrush: true,
     });
     let virtualBrickMap = new BrickMap().copy(params.brickMap);
@@ -57,7 +59,7 @@ export class SculptMode implements Mode {
               return;
             }
             let pointUnderRay2 = pointUnderRay as Accessor<NonNullable<ReturnType<typeof pointUnderRay>>>;
-            drawInBrickmap(params.brickMap, pointUnderRay2(), state.isNegativeBrush);
+            drawInBrickmap(params.brickMap, pointUnderRay2(), state.isNegativeBrush, state.brushSize);
             params.updateSdf();
             let lastPt = pointUnderRay2();
             createComputed(on(
@@ -66,7 +68,7 @@ export class SculptMode implements Mode {
                 if (lastPt.distanceTo(pointUnderRay) < 15.0) {
                   return;
                 }
-                strokeInBrickmap(params.brickMap, lastPt, pointUnderRay, state.isNegativeBrush);
+                strokeInBrickmap(params.brickMap, lastPt, pointUnderRay, state.isNegativeBrush, state.brushSize);
                 params.updateSdf();
                 lastPt = pointUnderRay;
               },
@@ -115,8 +117,25 @@ export class SculptMode implements Mode {
             />
           </label>
         </div>
+        <label class="label">
+          Brush Size:
+          <input
+            type="range"
+            class="range"
+            min="8"
+            max="40"
+            value={state.brushSize}
+            onInput={(e) => {
+              let x = Number.parseInt(e.currentTarget.value);
+              if (Number.isNaN(x)) {
+                return;
+              }
+              setState("brushSize", x);
+            }}
+          />
+        </label>
         <button
-          class="btn btn-primary"
+          class="btn btn-primary ml-2"
           onClick={() => params.endMode()}
         >
           End Sculpt Mode
@@ -143,11 +162,11 @@ export class SculptMode implements Mode {
   }
 }
 
-function drawInBrickmap(brickMap: BrickMap, pt: THREE.Vector3, negative: boolean) {
+function drawInBrickmap(brickMap: BrickMap, pt: THREE.Vector3, negative: boolean, brushSize: number) {
   let cx = 512 + Math.round(pt.x / 10.0);
   let cy = 512 + Math.round(pt.y / 10.0);
   let cz = 512 + Math.round(pt.z / 10.0);
-  let r = 4;
+  let r = Math.round(0.5 * brushSize);
   for (let i = -r-2; i <= r+2; ++i) {
     for (let j = -r-2; j <= r+2; ++j) {
       for (let k = -r-2; k <= r+2; ++k) {
@@ -186,14 +205,14 @@ function drawInBrickmap(brickMap: BrickMap, pt: THREE.Vector3, negative: boolean
   }
 };
 
-function strokeInBrickmap(brickMap: BrickMap, p1: THREE.Vector3, p2: THREE.Vector3, negative: boolean) {
+function strokeInBrickmap(brickMap: BrickMap, p1: THREE.Vector3, p2: THREE.Vector3, negative: boolean, brushSize: number) {
   let pt1x = 512 + Math.round(p1.x/10);
   let pt1y = 512 + Math.round(p1.y/10);
   let pt1z = 512 + Math.round(p1.z/10);
   let pt2x = 512 + Math.round(p2.x/10);
   let pt2y = 512 + Math.round(p2.y/10);
   let pt2z = 512 + Math.round(p2.z/10);
-  let r = 4;
+  let r = Math.round(0.5 * brushSize);
   let ux = pt2x - pt1x;
   let uy = pt2y - pt1y;
   let uz = pt2z - pt1z;
