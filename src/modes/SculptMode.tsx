@@ -1,4 +1,4 @@
-import { Accessor, Component, createComputed, createMemo, on, onCleanup } from "solid-js";
+import { Accessor, Component, createComputed, createMemo, on, onCleanup, untrack } from "solid-js";
 import * as THREE from "three";
 import { Mode } from "./Mode";
 import { ModeParams } from "./ModeParams";
@@ -79,13 +79,22 @@ export class SculptMode implements Mode {
       },
       { defer: true, },
     ));
-    let geo = new THREE.SphereGeometry(40.0);
+    let geo = new THREE.SphereGeometry(0.5 * untrack(() => state.brushSize) * 10.0);
     let mat = new THREE.MeshStandardMaterial({ color: "blue", });
+    let mesh = new THREE.Mesh(geo, mat);
+    createComputed(on(
+      () => state.brushSize,
+      (brushSize) => {
+        geo.dispose();
+        geo = new THREE.SphereGeometry(0.5 * brushSize * 10.0);
+        mesh = new THREE.Mesh(geo, mat);
+        params.rerender();
+      },
+    ));
     onCleanup(() => {
       geo.dispose();
       mat.dispose();
     });
-    let mesh = new THREE.Mesh(geo, mat);
     let instructions: Component = () => (
       <>
         <div class="join">
@@ -124,10 +133,13 @@ export class SculptMode implements Mode {
             class="range"
             min="8"
             max="40"
-            value={state.brushSize}
+            value={state.brushSize.toString()}
             onInput={(e) => {
               let x = Number.parseInt(e.currentTarget.value);
               if (Number.isNaN(x)) {
+                return;
+              }
+              if (x == state.brushSize) {
                 return;
               }
               setState("brushSize", x);
