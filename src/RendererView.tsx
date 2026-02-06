@@ -60,7 +60,7 @@ float map2(vec3 p) {
 }
 
 const int MAX_STEPS = 200;
-const float MIN_DIST = 5.0;
+const float MIN_DIST = 1.0;
 const float MAX_DIST = 10000.0;
 
 bool negativeMarch(vec3 ro, vec3 rd, out float t) {
@@ -107,7 +107,7 @@ bool march(vec3 ro, vec3 rd, out float t, out bool negative) {
 }
 
 vec3 normal(vec3 p) {
-    const float eps = 0.1;
+    const float eps = 4.0;
     const vec2 h = vec2(eps, 0);
     const vec3 z = vec3(0.0);
     return normalize(vec3(
