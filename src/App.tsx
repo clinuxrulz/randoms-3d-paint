@@ -63,6 +63,7 @@ const App: Component = () => {
   let [ renderDiv, setRenderDiv, ] = createSignal<HTMLDivElement>();
   let [ isTransformDragging, setTransformDragging, ] = createSignal(false);
   // test data
+  /*
   function test_sdf(x: number, y: number, z: number) {
     let dx = x;
     let dy = y;
@@ -74,10 +75,6 @@ const App: Component = () => {
       for (let k = -105; k <= 105; ++k) {
         let a = test_sdf(i,j,k);
         a /= Math.sqrt(3);
-        /*
-        if (a < -1.0 || a > 1.0) {
-          continue;
-        }*/
         let val = 128 - Math.floor(Math.max(-1, Math.min(1, a)) * 127);
         if (val < 1) val = 1; 
         if (val > 255) val = 255;
@@ -90,6 +87,7 @@ const App: Component = () => {
       }
     }
   }
+  */
   //
   let pointerDownStartTime: number | undefined;
   let onPointerDown = (e: PointerEvent) => {
