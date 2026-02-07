@@ -92,6 +92,37 @@ export class BrickMap {
     }
   }
 
+  async save(writer: WritableStreamDefaultWriter<Uint8Array>) {
+    await writer.write(this.indirectionData);
+    let brickBuffer = new Uint8Array(BRICK_P_RES ** 3);
+    for (let i = 0, gridIdx = 0; i < this.indirectionData.length; i += 4, ++gridIdx) {
+      let ax = this.indirectionData[i];
+      let ay = this.indirectionData[i+1];
+      let az = this.indirectionData[i+2];
+      let state = this.indirectionData[i+3];
+      if (state == 255) {
+        let at =
+          (az * BRICK_P_RES) << (ATLAS_RES_BITS + ATLAS_RES_BITS) |
+          (ay * BRICK_P_RES) << ATLAS_RES_BITS |
+          (ax * BRICK_P_RES);
+        let stepK = 1;
+        let stepJ = 1 << ATLAS_RES_BITS;
+        let stepI = 1 << (ATLAS_RES_BITS + ATLAS_RES_BITS);
+        let bufferIdx = 0;
+        for (let i = 0; i < BRICK_P_RES; ++i, at += stepI) {
+          let at2 = at;
+          for (let j = 0; j < BRICK_P_RES; ++j, at2 += stepJ) {
+            let at3 = at2;
+            for (let k = 0; k < BRICK_P_RES; ++k, at3 += stepK) {
+              brickBuffer[bufferIdx++] = this.atlasData[at3];
+            }
+          }
+        }
+        await writer.write(brickBuffer);
+      }
+    }
+  }
+
   private getGridIdx(gx: number, gy: number, gz: number) {
     return (gz * GRID_RES * GRID_RES) + (gy * GRID_RES) + gx;
   }

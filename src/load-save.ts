@@ -48,3 +48,12 @@ export async function load(reader: ReadableStreamDefaultReader<Uint8Array>, bric
   brickMap.load(reader2);
 }
 
+export async function save(writer: WritableStreamDefaultWriter<Uint8Array>, brikMap: BrickMap) {
+  let buffer = new Uint8Array(16);
+  let version = 1;
+  buffer[0] = version & 0xFF;
+  buffer[1] = (version >> 8) & 0xFF;
+  await writer.write(buffer);
+  brikMap.save(writer);
+}
+
