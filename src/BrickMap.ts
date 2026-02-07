@@ -92,7 +92,7 @@ export class BrickMap {
     }
   }
 
-  async save(writer: WritableStreamDefaultWriter<Uint8Array>) {
+  async save(writer: WritableStreamDefaultWriter<BufferSource>) {
     await writer.write(this.indirectionData);
     let brickBuffer = new Uint8Array(BRICK_P_RES ** 3);
     for (let i = 0, gridIdx = 0; i < this.indirectionData.length; i += 4, ++gridIdx) {
