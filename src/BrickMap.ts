@@ -1,4 +1,5 @@
 import * as THREE from "three";
+import { ReaderHelper } from "./load-save";
 
 const RES_BITS = 10;
 const RES = (1 << RES_BITS);
@@ -40,6 +41,54 @@ export class BrickMap {
   constructor() {
     for (let i = 0; i < MAX_BRICKS; i++) {
       this.freeBricks.push(i);
+    }
+  }
+
+  async load(reader: ReaderHelper) {
+    await reader.read(
+      this.indirectionData,
+      0,
+      this.indirectionData.length,
+    );
+    let usedBricks = new Set<number>();
+    this.brickMap.clear();
+    let brickBuffer = new Uint8Array(BRICK_P_RES ** 3);
+    for (let i = 0, gridIdx = 0; i < this.indirectionData.length; i += 4, ++gridIdx) {
+      let ax = this.indirectionData[i];
+      let ay = this.indirectionData[i+1];
+      let az = this.indirectionData[i+2];
+      let state = this.indirectionData[i+3];
+      if (state == 255) {
+        let aIdx = az * (BRICKS_PER_RES * BRICKS_PER_RES)
+                 + ay * BRICKS_PER_RES
+                 + ax;
+        this.brickMap.set(gridIdx, aIdx);
+        usedBricks.add(aIdx);
+        await reader.read(brickBuffer, 0, brickBuffer.length);
+        let at =
+          (az * BRICK_P_RES) << (ATLAS_RES_BITS + ATLAS_RES_BITS) |
+          (ay * BRICK_P_RES) << ATLAS_RES_BITS |
+          (ax * BRICK_P_RES);
+        let stepK = 1;
+        let stepJ = 1 << ATLAS_RES_BITS;
+        let stepI = 1 << (ATLAS_RES_BITS + ATLAS_RES_BITS);
+        let bufferIdx = 0;
+        for (let i = 0; i < BRICK_P_RES; ++i, at += stepI) {
+          let at2 = at;
+          for (let j = 0; j < BRICK_P_RES; ++j, at2 += stepJ) {
+            let at3 = at2;
+            for (let k = 0; k < BRICK_P_RES; ++k, at3 += stepK) {
+              this.atlasData[at3] = brickBuffer[bufferIdx++];
+            }
+          }
+        }
+      }
+    }
+    this.freeBricks.splice(0, this.freeBricks.length);
+    for (let i = 0; i < MAX_BRICKS; ++i) {
+      if (!usedBricks.has(i)) {
+        this.freeBricks.push(i);
+      }
     }
   }
 
