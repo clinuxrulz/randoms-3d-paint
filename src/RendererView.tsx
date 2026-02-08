@@ -219,7 +219,7 @@ void main(void) {
       rerender();
     },
     onBrickMapPaintChanged() {
-      props.brickMap.updatePaintThreeJs(brickMapTextures);
+      props.brickMap.updatePaintThreeJs(renderer()!, brickMapTextures);
       rerender();
     },
     rerender,

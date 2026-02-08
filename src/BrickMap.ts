@@ -40,6 +40,8 @@ export class BrickMap {
   // GridIdx -> AtlasIdx
   private brickMap = new Map<number, number>();
 
+  private dirtyColourBricks = new Set<number>();
+
   constructor() {
     for (let i = 0; i < MAX_BRICKS; i++) {
       this.freeBricks.push(i);
@@ -290,6 +292,7 @@ export class BrickMap {
             this.colourData[idx + 1] = g;
             this.colourData[idx + 2] = b;
             this.colourData[idx + 3] = 255;
+            this.dirtyColourBricks.add(aIdx);
           }
         }
       }
@@ -578,8 +581,48 @@ export class BrickMap {
     textures.aTex.needsUpdate = true;
   }
 
-  updatePaintThreeJs(textures: BrickMapTHREETextures) {
-    textures.cTex.needsUpdate = true;
+  private tempColourDataBuffer = new Uint8Array((BRICK_P_RES ** 3) << 2);
+  updatePaintThreeJs(renderer: THREE.WebGLRenderer, textures: BrickMapTHREETextures) {
+    const gl = renderer.getContext();
+    let textureProperties = renderer.properties.get(textures.cTex);
+    if (!(textureProperties as any).__webglTexture) {
+      textures.cTex.needsUpdate = true;
+      this.dirtyColourBricks.clear();
+      return;
+    }
+    gl.bindTexture(gl.TEXTURE_3D, (textureProperties as any).__webglTexture);
+    for (let aIdx of this.dirtyColourBricks) {
+      let ax = aIdx % BRICKS_PER_RES;
+      let ay = Math.floor(aIdx / BRICKS_PER_RES) % BRICKS_PER_RES;
+      let az = Math.floor(aIdx / (BRICKS_PER_RES * BRICKS_PER_RES));
+      const xOff = ax * BRICK_P_RES;
+      const yOff = ay * BRICK_P_RES;
+      const zOff = az * BRICK_P_RES;
+      let idx = 0;
+      for (let z = 0; z < BRICK_P_RES; z++) {
+        let sliceStart = ((zOff + z) * ATLAS_RES * ATLAS_RES + (yOff * ATLAS_RES) + xOff) << 2;
+        for (let y = 0; y < BRICK_P_RES; y++) {
+          let rowStart = sliceStart + (y * ATLAS_RES << 2);
+          for (let x = 0; x < BRICK_P_RES; x++) {
+            let pixelPos = rowStart + (x << 2);
+            this.tempColourDataBuffer[idx++] = this.colourData[pixelPos];
+            this.tempColourDataBuffer[idx++] = this.colourData[pixelPos + 1];
+            this.tempColourDataBuffer[idx++] = this.colourData[pixelPos + 2];
+            this.tempColourDataBuffer[idx++] = this.colourData[pixelPos + 3];
+          }
+        }
+      }
+      gl.texSubImage3D(
+        gl.TEXTURE_3D,
+        0,
+        xOff, yOff, zOff,
+        BRICK_P_RES, BRICK_P_RES, BRICK_P_RES,
+        gl.RGBA,
+        gl.UNSIGNED_BYTE,
+        this.tempColourDataBuffer
+      );
+    }
+    this.dirtyColourBricks.clear();
   }
 
   initTextures(
