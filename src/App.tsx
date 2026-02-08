@@ -10,6 +10,7 @@ import { DrawMode } from './modes/DrawMode';
 import { InsertPrimitivesMode } from './modes/InsertPrimitivesMode';
 import { SculptMode } from './modes/SculptMode';
 import { loadScene, saveScene } from './load-save';
+import { PaintMode } from './modes/PaintMode';
 
 const App: Component = () => {
   let [ state, setState, ] = createStore<{
@@ -35,6 +36,10 @@ const App: Component = () => {
     updateSdf: () => {
       let controller = rendererViewController();
       controller?.onBrickMapChanged();
+    },
+    updatePaint: () => {
+      let controller = rendererViewController();
+      controller?.onBrickMapPaintChanged();
     },
     rerender: () => {
       let controller = rendererViewController();
@@ -251,6 +256,12 @@ const App: Component = () => {
             onClick={() => setMode(SculptMode)}
           >
             Sculpt
+          </button>
+          <button
+            class="btn btn-primary ml-2"
+            onClick={() => setMode(PaintMode)}
+          >
+            Paint
           </button>
           <button
             class="btn btn-primary ml-2"

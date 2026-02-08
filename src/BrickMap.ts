@@ -22,6 +22,7 @@ const HALF_VOLUME_SIZE = (RES >> 1) * VOXEL_SIZE;
 export type BrickMapTHREETextures = {
   iTex: THREE.Data3DTexture,
   aTex: THREE.Data3DTexture,
+  cTex: THREE.Data3DTexture,
 };
 
 export type BrickMapTextures = {
@@ -33,6 +34,7 @@ export class BrickMap {
   private indirectionData = new Uint8Array(GRID_DATA_SIZE);
   // holds the 8x8x8 bricks
   private atlasData = new Uint8Array(ATLAS_RES ** 3);
+  private colourData = new Uint8Array((ATLAS_RES ** 3) * 4);
   
   private freeBricks: number[] = [];
   // GridIdx -> AtlasIdx
@@ -122,6 +124,27 @@ export class BrickMap {
       }
     }
   }
+
+  /*
+  allocMaterial(): number {
+    let materialId = this.freeMaterialIds.pop();
+    if (materialId != undefined) {
+      return materialId;
+    }
+    if (this.nextMaterialId == 256) {
+      throw new Error("Ran out of materials");
+    }
+    return this.nextMaterialId++;
+  }
+
+  freeMaterial(materialId: number) {
+    this.freeMaterialIds.push(materialId);
+  }
+
+  setMaterial(materialId: number, r: number, g: number, b: number) {
+    this.materials[materialId] = b | (g << 8) | (r << 16);
+  }
+  */
 
   private getGridIdx(gx: number, gy: number, gz: number) {
     return (gz * GRID_RES * GRID_RES) + (gy * GRID_RES) + gx;
@@ -216,6 +239,57 @@ export class BrickMap {
                 this.deallocateBrick(gIdx, allNegative);
               }
             }
+          }
+        }
+      }
+    }
+  }
+
+  paint(x: number, y: number, z: number, r: number, g: number, b: number) {
+    // inverse the colours, so the default colour is white
+    r = 255 - r;
+    g = 255 - g;
+    b = 255 - b;
+    // sweep adjacent bricks incase coord lands on a gutter
+    const minGx = (x - 1) >> BRICK_L_RES_BITS;
+    const maxGx = (x + 1) >> BRICK_L_RES_BITS;
+    const minGy = (y - 1) >> BRICK_L_RES_BITS;
+    const maxGy = (y + 1) >> BRICK_L_RES_BITS;
+    const minGz = (z - 1) >> BRICK_L_RES_BITS;
+    const maxGz = (z + 1) >> BRICK_L_RES_BITS;
+    for (let gz = minGz; gz <= maxGz; gz++) {
+      for (let gy = minGy; gy <= maxGy; gy++) {
+        for (let gx = minGx; gx <= maxGx; gx++) {
+          if (gx < 0 || gx >= GRID_RES || gy < 0 || gy >= GRID_RES || gz < 0 || gz >= GRID_RES) continue;
+          // get the local coords within the brick
+          const gIdx = this.getGridIdx(gx, gy, gz);
+          const lx = x - (gx * BRICK_L_RES) + 1;
+          const ly = y - (gy * BRICK_L_RES) + 1;
+          const lz = z - (gz * BRICK_L_RES) + 1;
+          // if coords are outside of the brick and its gutter, skip it
+          if (
+            lx < 0 || lx >= BRICK_P_RES ||
+            ly < 0 || ly >= BRICK_P_RES ||
+            lz < 0 || lz >= BRICK_P_RES
+          ) {
+            continue;
+          }
+          //
+          if (this.brickMap.has(gIdx)) {
+            let aIdx = this.brickMap.get(gIdx)!;
+            let ax = aIdx % BRICKS_PER_RES;
+            let ay = Math.floor(aIdx / BRICKS_PER_RES) % BRICKS_PER_RES;
+            let az = Math.floor(aIdx / (BRICKS_PER_RES * BRICKS_PER_RES));
+            let atlasPos = (
+              (az * BRICK_P_RES + lz) * ATLAS_RES * ATLAS_RES +
+              (ay * BRICK_P_RES + ly) * ATLAS_RES +
+              (ax * BRICK_P_RES + lx)
+            );
+            let idx = atlasPos << 2;
+            this.colourData[idx] = r;
+            this.colourData[idx + 1] = g;
+            this.colourData[idx + 2] = b;
+            this.colourData[idx + 3] = 255;
           }
         }
       }
@@ -474,17 +548,38 @@ export class BrickMap {
     aTex.wrapR = THREE.ClampToEdgeWrapping;
     aTex.unpackAlignment = 1;
     aTex.needsUpdate = true;
+    let cTex = new THREE.Data3DTexture(
+      this.colourData,
+      ATLAS_RES,
+      ATLAS_RES,
+      ATLAS_RES,
+    );
+    cTex.format = THREE.RGBAFormat;
+    cTex.type = THREE.UnsignedByteType;
+    cTex.minFilter = THREE.LinearFilter;
+    cTex.magFilter = THREE.LinearFilter;
+    cTex.wrapS = THREE.ClampToEdgeWrapping;
+    cTex.wrapT = THREE.ClampToEdgeWrapping;
+    cTex.wrapR = THREE.ClampToEdgeWrapping;
+    cTex.unpackAlignment = 1;
+    cTex.needsUpdate = true;
     uniforms.uIndirectionTex = { value: iTex, };
     uniforms.uAtlasTex = { value: aTex, };
+    uniforms.uColourTex = { value: cTex, };
     return {
       iTex,
       aTex,
+      cTex,
     };
   }
 
   updateTexturesThreeJs(textures: BrickMapTHREETextures) {
     textures.iTex.needsUpdate = true;
     textures.aTex.needsUpdate = true;
+  }
+
+  updatePaintThreeJs(textures: BrickMapTHREETextures) {
+    textures.cTex.needsUpdate = true;
   }
 
   initTextures(
@@ -556,11 +651,27 @@ export class BrickMap {
     return (
 `uniform sampler3D uIndirectionTex;
 uniform sampler3D uAtlasTex;
+uniform sampler3D uColourTex;
 
 const float VOXEL_SIZE = ${VOXEL_SIZE.toFixed(1)};
 const float GRID_RES = ${GRID_RES.toFixed(1)};
 const float ATLAS_RES = ${ATLAS_RES.toFixed(1)};
 const float HALF_VOLUME_SIZE = ${((RES >> 1) * VOXEL_SIZE).toFixed(1)};
+
+vec4 colour(vec3 p) {
+  vec3 p_local = p + HALF_VOLUME_SIZE;
+  vec3 uvw = p_local / ${(GRID_RES * BRICK_L_RES * VOXEL_SIZE).toFixed(1)};
+  vec4 brickInfo = texture(uIndirectionTex, uvw);
+  vec3 cellLocal = fract(uvw * GRID_RES);
+  if (brickInfo.a < 0.9) {
+    return vec4(0.0, 0.0, 0.0, 1.0);
+  }
+  vec3 brickBase = brickInfo.xyz * 255.0 * 10.0;
+  vec3 atlasVoxelPos = brickBase + 1.0 + (cellLocal * 8.0);
+  vec3 atlasUVW = atlasVoxelPos / ATLAS_RES;
+  vec4 c = texture(uColourTex, atlasUVW);
+  return vec4(1.0 - c.r, 1.0 - c.g, 1.0 - c.b, 1.0);
+}
 
 float map(vec3 p, vec3 rd) {
     vec3 p_local = p + HALF_VOLUME_SIZE;

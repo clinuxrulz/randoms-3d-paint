@@ -9,6 +9,7 @@ export type ModeParams = {
   pointerPos: Accessor<THREE.Vector2 | undefined>,
   pointerDown: Accessor<boolean>,
   updateSdf: () => void,
+  updatePaint: () => void,
   rerender: () => void,
   screenCoordsToRay: (screenCoords: THREE.Vector2, out_ray: THREE.Ray) => void,
   getThreeObjectsUnderScreenCoords: (screenCoords: THREE.Vector2) => Generator<THREE.Object3D>,

@@ -10,6 +10,7 @@ const FOV_Y = 50.0;
 export type RendererViewController = {
   canvasSize: Accessor<THREE.Vector2 | undefined>,
   onBrickMapChanged: () => void,
+  onBrickMapPaintChanged: () => void,
   rerender: () => void,
   moveTransform: () => void,
   rotateTransform: () => void,
@@ -141,7 +142,7 @@ void main(void) {
     n = -n;
   }
   float s = 0.8*dot(n,normalize(vec3(1,1,1))) + 0.2;
-  vec4 c = vec4(1.0, 1.0, 1.0, 1.0);
+  vec4 c = colour(p);
   c = vec4(c.rgb * s, c.a);
   gl_FragColor = c;
   vec4 clipPos = uCameraProjectionMatrix * uCameraViewMatrix * vec4(p, 1.0);
@@ -215,6 +216,10 @@ void main(void) {
     canvasSize,
     onBrickMapChanged() {
       props.brickMap.updateTexturesThreeJs(brickMapTextures);
+      rerender();
+    },
+    onBrickMapPaintChanged() {
+      props.brickMap.updatePaintThreeJs(brickMapTextures);
       rerender();
     },
     rerender,
