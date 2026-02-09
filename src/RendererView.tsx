@@ -215,7 +215,7 @@ void main(void) {
   props.onInit({
     canvasSize,
     onBrickMapChanged() {
-      props.brickMap.updateTexturesThreeJs(brickMapTextures);
+      props.brickMap.updateTexturesThreeJs(renderer()!, brickMapTextures);
       rerender();
     },
     onBrickMapPaintChanged() {

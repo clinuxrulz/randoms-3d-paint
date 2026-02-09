@@ -40,6 +40,7 @@ export class BrickMap {
   // GridIdx -> AtlasIdx
   private brickMap = new Map<number, number>();
 
+  private dirtyAtlasBricks = new Set<number>();
   private dirtyColourBricks = new Set<number>();
 
   constructor() {
@@ -234,11 +235,13 @@ export class BrickMap {
               lz == BRICK_P_RES-1
             );
             this.writeToAtlas(aIdx, lx, ly, lz, value, checkForCollapse, this._set_collapse);
+            this.dirtyAtlasBricks.add(aIdx);
             if (checkForCollapse) {
               let allPositive = this._set_collapse.allPositive;
               let allNegative = this._set_collapse.allNegative;
               if (allPositive || allNegative) {
                 this.deallocateBrick(gIdx, allNegative);
+                this.dirtyAtlasBricks.delete(aIdx);
               }
             }
           }
@@ -543,6 +546,7 @@ export class BrickMap {
       ATLAS_RES,
     );
     aTex.format = THREE.RedFormat; 
+    aTex.internalFormat = "R8";
     aTex.type = THREE.UnsignedByteType;
     aTex.minFilter = THREE.LinearFilter;
     aTex.magFilter = THREE.LinearFilter;
@@ -576,14 +580,54 @@ export class BrickMap {
     };
   }
 
-  updateTexturesThreeJs(textures: BrickMapTHREETextures) {
+  private tempAtlasDataBuffer = new Uint8Array(BRICK_P_RES ** 3);
+  updateTexturesThreeJs(renderer: THREE.WebGLRenderer, textures: BrickMapTHREETextures) {
     textures.iTex.needsUpdate = true;
-    textures.aTex.needsUpdate = true;
+    //textures.aTex.needsUpdate = true;
+    {
+      const gl = renderer.getContext() as WebGL2RenderingContext;
+      let textureProperties = renderer.properties.get(textures.aTex);
+      if (!(textureProperties as any).__webglTexture) {
+        textures.aTex.needsUpdate = true;
+        this.dirtyAtlasBricks.clear();
+        return;
+      }
+      gl.bindTexture(gl.TEXTURE_3D, (textureProperties as any).__webglTexture);
+      for (let aIdx of this.dirtyAtlasBricks) {
+        let ax = aIdx % BRICKS_PER_RES;
+        let ay = Math.floor(aIdx / BRICKS_PER_RES) % BRICKS_PER_RES;
+        let az = Math.floor(aIdx / (BRICKS_PER_RES * BRICKS_PER_RES));
+        const xOff = ax * BRICK_P_RES;
+        const yOff = ay * BRICK_P_RES;
+        const zOff = az * BRICK_P_RES;
+        let idx = 0;
+        for (let z = 0; z < BRICK_P_RES; z++) {
+          let sliceStart = ((zOff + z) * ATLAS_RES * ATLAS_RES + (yOff * ATLAS_RES) + xOff);
+          for (let y = 0; y < BRICK_P_RES; y++) {
+            let rowStart = sliceStart + (y * ATLAS_RES);
+            for (let x = 0; x < BRICK_P_RES; x++) {
+              let pixelPos = rowStart + x;
+              this.tempAtlasDataBuffer[idx++] = this.atlasData[pixelPos];
+            }
+          }
+        }
+        gl.texSubImage3D(
+          gl.TEXTURE_3D,
+          0,
+          xOff, yOff, zOff,
+          BRICK_P_RES, BRICK_P_RES, BRICK_P_RES,
+          gl.RED,
+          gl.UNSIGNED_BYTE,
+          this.tempAtlasDataBuffer,
+        );
+      }
+      this.dirtyAtlasBricks.clear();
+    }
   }
 
   private tempColourDataBuffer = new Uint8Array((BRICK_P_RES ** 3) << 2);
   updatePaintThreeJs(renderer: THREE.WebGLRenderer, textures: BrickMapTHREETextures) {
-    const gl = renderer.getContext();
+    const gl = renderer.getContext() as WebGL2RenderingContext;
     let textureProperties = renderer.properties.get(textures.cTex);
     if (!(textureProperties as any).__webglTexture) {
       textures.cTex.needsUpdate = true;
