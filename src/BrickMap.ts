@@ -43,6 +43,8 @@ export class BrickMap {
   private dirtyAtlasBricks = new Set<number>();
   private dirtyColourBricks = new Set<number>();
 
+  private forceAllAtlasDirty = false;
+
   constructor() {
     for (let i = 0; i < MAX_BRICKS; i++) {
       this.freeBricks.push(i);
@@ -95,6 +97,7 @@ export class BrickMap {
         this.freeBricks.push(i);
       }
     }
+    this.forceAllAtlasDirty = true;
   }
 
   async save(writer: WritableStreamDefaultWriter<BufferSource>) {
@@ -587,6 +590,12 @@ export class BrickMap {
     {
       const gl = renderer.getContext() as WebGL2RenderingContext;
       let textureProperties = renderer.properties.get(textures.aTex);
+      if (this.forceAllAtlasDirty) {
+        textures.aTex.needsUpdate = true;
+        this.dirtyAtlasBricks.clear();
+        this.forceAllAtlasDirty = false;
+        return;
+      }
       if (!(textureProperties as any).__webglTexture) {
         textures.aTex.needsUpdate = true;
         this.dirtyAtlasBricks.clear();
