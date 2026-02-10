@@ -565,6 +565,7 @@ export class BrickMap {
       ATLAS_RES,
     );
     cTex.format = THREE.RGBAFormat;
+    cTex.internalFormat = "RGBA8";
     cTex.type = THREE.UnsignedByteType;
     cTex.minFilter = THREE.LinearFilter;
     cTex.magFilter = THREE.LinearFilter;
@@ -586,7 +587,6 @@ export class BrickMap {
   private tempAtlasDataBuffer = new Uint8Array(BRICK_P_RES ** 3);
   updateTexturesThreeJs(renderer: THREE.WebGLRenderer, textures: BrickMapTHREETextures) {
     textures.iTex.needsUpdate = true;
-    //textures.aTex.needsUpdate = true;
     {
       const gl = renderer.getContext() as WebGL2RenderingContext;
       let textureProperties = renderer.properties.get(textures.aTex);
@@ -602,6 +602,12 @@ export class BrickMap {
         return;
       }
       gl.bindTexture(gl.TEXTURE_3D, (textureProperties as any).__webglTexture);
+      gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
+      gl.pixelStorei(gl.UNPACK_ROW_LENGTH, 0);
+      gl.pixelStorei(gl.UNPACK_IMAGE_HEIGHT, 0);
+      gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
+      gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, false);
+      gl.bindBuffer(gl.PIXEL_UNPACK_BUFFER, null);
       for (let aIdx of this.dirtyAtlasBricks) {
         let ax = aIdx % BRICKS_PER_RES;
         let ay = Math.floor(aIdx / BRICKS_PER_RES) % BRICKS_PER_RES;
@@ -631,7 +637,8 @@ export class BrickMap {
         );
       }
       this.dirtyAtlasBricks.clear();
-    }
+      renderer.state.reset();
+    }//
   }
 
   private tempColourDataBuffer = new Uint8Array((BRICK_P_RES ** 3) << 2);
@@ -644,6 +651,12 @@ export class BrickMap {
       return;
     }
     gl.bindTexture(gl.TEXTURE_3D, (textureProperties as any).__webglTexture);
+    gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
+    gl.pixelStorei(gl.UNPACK_ROW_LENGTH, 0);
+    gl.pixelStorei(gl.UNPACK_IMAGE_HEIGHT, 0);
+    gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
+    gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, false);
+    gl.bindBuffer(gl.PIXEL_UNPACK_BUFFER, null);
     for (let aIdx of this.dirtyColourBricks) {
       let ax = aIdx % BRICKS_PER_RES;
       let ay = Math.floor(aIdx / BRICKS_PER_RES) % BRICKS_PER_RES;
@@ -676,6 +689,7 @@ export class BrickMap {
       );
     }
     this.dirtyColourBricks.clear();
+    renderer.state.reset();
   }
 
   initTextures(
