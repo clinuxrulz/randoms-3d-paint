@@ -26,6 +26,7 @@
     "prando": "^6.0.1",
     "solid-js": "^1.9.5",
     "tailwindcss": "^4.1.18",
-    "three": "^0.182.0"
+    "three": "^0.182.0",
+    "xatlas-three": "^0.2.1"
   }
 }

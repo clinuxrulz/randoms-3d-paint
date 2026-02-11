@@ -26,6 +26,9 @@ importers:
       three:
         specifier: ^0.182.0
         version: 0.182.0
+      xatlas-three:
+        specifier: ^0.2.1
+        version: 0.2.1
     devDependencies:
       '@types/three':
         specifier: ^0.182.0
@@ -1248,6 +1251,9 @@ packages:
       utf-8-validate:
         optional: true
 
+  xatlas-three@0.2.1:
+    resolution: {integrity: sha512-lSdakwxt2AzGmEP2dnYqmS8KqM8ErxBzwAwuEtrbOLxVpWaSJZB5FAUZ4+cT/kKSLlyHZVm866rTCtT+9RjJgg==}
+
   xml-name-validator@5.0.0:
     resolution: {integrity: sha512-EvGK8EJ3DhaHfbRlETOWAS5pO9MZITeauHKJyb8wyajUfQUenkIg2MvLDTZ4T/TgIcm3HU0TFBgWWboAZ30UHg==}
     engines: {node: '>=18'}
@@ -2331,6 +2337,8 @@ snapshots:
       stackback: 0.0.2
 
   ws@8.19.0: {}
+
+  xatlas-three@0.2.1: {}
 
   xml-name-validator@5.0.0: {}
 

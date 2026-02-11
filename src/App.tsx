@@ -11,9 +11,9 @@ import { InsertPrimitivesMode } from './modes/InsertPrimitivesMode';
 import { SculptMode } from './modes/SculptMode';
 import { loadScene, saveScene } from './load-save';
 import { PaintMode } from './modes/PaintMode';
-import Palette from './Palette';
 import ColourInput from './ColourInput';
 import { march, pointsAndTriangleIndicesToGeometry } from './marching_cubes/marching_cubes';
+import { UVUnwrapper, } from 'xatlas-three';
 
 const defaultPalette = [
   // Grayscale (White to Black)
@@ -271,12 +271,31 @@ const App: Component = () => {
     if (state.showingMarchedGeometry == undefined) {
       return undefined;
     }
+    let geometry = state.showingMarchedGeometry;
     let material = new THREE.MeshStandardMaterial({ color: "blue", });
     onCleanup(() => {
       material.dispose();
     });
-    let mesh = new THREE.Mesh(state.showingMarchedGeometry, material);
+    let mesh = new THREE.Mesh(geometry, material);
     modeParams.rerender();
+    (async () => {
+      let unwrapper = new UVUnwrapper({BufferAttribute: THREE.BufferAttribute});
+      await unwrapper.loadLibrary(
+        (mode, progress)=>{console.log(mode, progress);},
+        'https://cdn.jsdelivr.net/npm/xatlasjs@0.2.0/dist/xatlas.wasm',
+        'https://cdn.jsdelivr.net/npm/xatlasjs@0.2.0/dist/xatlas.js',
+      );
+      await unwrapper.unwrapGeometry(geometry);
+      let texture = new THREE.TextureLoader().load(
+        "./uvdebug.jpg",
+        () => {
+          material.dispose();
+          material = new THREE.MeshStandardMaterial({ map: texture, });
+          mesh.material = material;
+          modeParams.rerender();
+        },
+      );
+    })();
     return mesh;
   });
   let overlayObject3D = createMemo(() => {
