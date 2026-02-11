@@ -17,6 +17,7 @@ export type RendererViewController = {
   scaleTransform: () => void,
   screenCoordsToRay: (screenCoords: THREE.Vector2, out_ray: THREE.Ray) => void,
   getThreeObjectsUnderScreenCoords: (screenCoords: THREE.Vector2) => Generator<THREE.Object3D>,
+  renderer: Accessor<THREE.WebGLRenderer | undefined>,
 };
 
 const RendererView: Component<{
@@ -274,6 +275,7 @@ void main(void) {
         yield intersection.object;
       }
     },
+    renderer,
   });
   onMount(() => {
     let canvas2 = canvas();

@@ -13,7 +13,8 @@ import { loadScene, saveScene } from './load-save';
 import { PaintMode } from './modes/PaintMode';
 import ColourInput from './ColourInput';
 import { march, pointsAndTriangleIndicesToGeometry } from './marching_cubes/marching_cubes';
-import { UVUnwrapper, } from 'xatlas-three';
+// @ts-ignore
+import { UVUnwrapper } from 'xatlas-three';
 
 const defaultPalette = [
   // Grayscale (White to Black)
@@ -267,21 +268,21 @@ const App: Component = () => {
     setState("showingMarchedGeometry", undefined);
     modeParams.rerender();
   };
+  let material: THREE.Material = new THREE.MeshStandardMaterial({ color: "blue", });
+  onCleanup(() => {
+    material.dispose();
+  });
   let showingMarchedMesh = createMemo(() => {
     if (state.showingMarchedGeometry == undefined) {
       return undefined;
     }
     let geometry = state.showingMarchedGeometry;
-    let material = new THREE.MeshStandardMaterial({ color: "blue", });
-    onCleanup(() => {
-      material.dispose();
-    });
     let mesh = new THREE.Mesh(geometry, material);
     modeParams.rerender();
     (async () => {
       let unwrapper = new UVUnwrapper({BufferAttribute: THREE.BufferAttribute});
       await unwrapper.loadLibrary(
-        (mode, progress)=>{console.log(mode, progress);},
+        (mode: number, progress: number)=>{console.log(mode, progress);},
         'https://cdn.jsdelivr.net/npm/xatlasjs@0.2.0/dist/xatlas.wasm',
         'https://cdn.jsdelivr.net/npm/xatlasjs@0.2.0/dist/xatlas.js',
       );
@@ -298,6 +299,48 @@ const App: Component = () => {
     })();
     return mesh;
   });
+  let bake = () => {
+    const renderer = rendererViewController()?.renderer();
+    const mesh = showingMarchedMesh();
+    if (!renderer || !mesh) return;
+    const bakeVertexShader = `
+      varying vec3 vWorldPosition;
+      void main() {
+        vWorldPosition = (modelMatrix * vec4(position, 1.0)).xyz;
+        gl_Position = vec4(uv * 2.0 - 1.0, 0.0, 1.0);
+      }
+    `;
+    const bakeFragmentShader = `
+      ${brickMap.writeShaderCode()}
+
+      varying vec3 vWorldPosition;
+      //vec3 colorFunc(vec3 p) { return vec3(sin(p.x), cos(p.y), sin(p.z)); }
+      void main() { gl_FragColor = vec4(colour(vWorldPosition).rgb, 1.0); }
+    `;
+    const bakeDimension = 1024;
+    const renderTarget = new THREE.WebGLRenderTarget(bakeDimension, bakeDimension);
+    const bakeCamera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+    let shaderParams: THREE.ShaderMaterialParameters = {
+      vertexShader: bakeVertexShader,
+      fragmentShader: bakeFragmentShader,
+      side: THREE.DoubleSide 
+    };
+    let bmTxt = brickMap.initTexturesThreeJs(shaderParams);
+    const bakeMaterial = new THREE.ShaderMaterial(shaderParams);
+    const originalMaterial = mesh.material;
+    const oldTarget = renderer.getRenderTarget();
+    mesh.material = bakeMaterial;
+    renderer.setRenderTarget(renderTarget);
+    renderer.render(mesh, bakeCamera);
+    renderer.setRenderTarget(oldTarget);
+    const finalMaterial = new THREE.MeshStandardMaterial({ 
+      map: renderTarget.texture 
+    });
+    mesh.material = finalMaterial;
+    if (originalMaterial) originalMaterial.dispose();
+    bakeMaterial.dispose(); 
+    modeParams.rerender();
+  };
   let overlayObject3D = createMemo(() => {
     let objects = [
       modeOverlayObject3D(),
@@ -414,6 +457,12 @@ const App: Component = () => {
               onClick={() => clearMarch()}
             >
               Clear March
+            </button>
+            <button
+              class="btn btn-primary ml-2"
+              onClick={() => bake()}
+            >
+              Bake
             </button>
           </Show>
           <Show when={areTransformControlsVisible()}>
