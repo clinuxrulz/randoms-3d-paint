@@ -45,6 +45,10 @@ export class BrickMap {
 
   private forceAllAtlasDirty = false;
 
+  get numBricks(): number {
+    return this.brickMap.size;
+  }
+
   constructor() {
     for (let i = 0; i < MAX_BRICKS; i++) {
       this.freeBricks.push(i);
