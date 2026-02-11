@@ -8,6 +8,7 @@ export type ModeParams = {
   canvasSize: Accessor<THREE.Vector2 | undefined>,
   pointerPos: Accessor<THREE.Vector2 | undefined>,
   pointerDown: Accessor<boolean>,
+  currentColour: Accessor<THREE.Color | undefined>,
   updateSdf: () => void,
   updatePaint: () => void,
   rerender: () => void,

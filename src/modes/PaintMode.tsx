@@ -13,10 +13,8 @@ export class PaintMode implements Mode {
   constructor(params: ModeParams) {
     let [ state, setState, ] = createStore<{
       brushSize: number,
-      colour: THREE.Color
     }>({
       brushSize: 8.0,
-      colour: new THREE.Color("blue"),
     });
     let virtualBrickMap = new BrickMap().copy(params.brickMap);
     let ray = createMemo(() => {
@@ -44,6 +42,7 @@ export class PaintMode implements Mode {
         .add(ray2.origin);
       return pt;
     });
+    let defaultColour = new THREE.Color("blue");
     createComputed(on(
       params.pointerDown,
       (pointerDown) => {
@@ -59,7 +58,7 @@ export class PaintMode implements Mode {
               return;
             }
             let pointUnderRay2 = pointUnderRay as Accessor<NonNullable<ReturnType<typeof pointUnderRay>>>;
-            drawInBrickmap(params.brickMap, pointUnderRay2(), state.brushSize, state.colour);
+            drawInBrickmap(params.brickMap, pointUnderRay2(), state.brushSize, untrack(params.currentColour) ?? defaultColour);
             params.updateSdf();
             let lastPt = pointUnderRay2();
             createComputed(on(
@@ -68,7 +67,7 @@ export class PaintMode implements Mode {
                 if (lastPt.distanceTo(pointUnderRay) < 15.0) {
                   return;
                 }
-                strokeInBrickmap(params.brickMap, lastPt, pointUnderRay, state.brushSize, state.colour);
+                strokeInBrickmap(params.brickMap, lastPt, pointUnderRay, state.brushSize, untrack(params.currentColour) ?? defaultColour);
                 params.updatePaint();
                 lastPt = pointUnderRay;
               },

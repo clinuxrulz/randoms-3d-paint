@@ -11,18 +11,54 @@ import { InsertPrimitivesMode } from './modes/InsertPrimitivesMode';
 import { SculptMode } from './modes/SculptMode';
 import { loadScene, saveScene } from './load-save';
 import { PaintMode } from './modes/PaintMode';
+import Palette from './Palette';
+import ColourInput from './ColourInput';
+
+const defaultPalette = [
+  // Grayscale (White to Black)
+  "#FFFFFF", "#F2F2F2", "#E6E6E6", "#CCCCCC", "#999999", "#666666", "#333333", "#000000",
+  // Reds (Pinkish to Deep Maroon)
+  "#FFEBEE", "#FFCDD2", "#EF9A9A", "#E57373", "#EF5350", "#F44336", "#D32F2F", "#B71C1C",
+  // Oranges (Peach to Deep Burnt Orange)
+  "#FFF3E0", "#FFE0B2", "#FFCC80", "#FFB74D", "#FFA726", "#FF9800", "#F57C00", "#E65100",
+  // Yellows/Ambers (Cream to Gold)
+  "#FFFDE7", "#FFF9C4", "#FFF59D", "#FFF176", "#FFEE58", "#FFEB3B", "#FBC02D", "#F57F17",
+  // Greens (Pale Mint to Forest)
+  "#E8F5E9", "#C8E6C9", "#A5D6A7", "#81C784", "#66BB6A", "#4CAF50", "#388E3C", "#1B5E20",
+  // Teals/Cyans (Light Aqua to Deep Teal)
+  "#E0F7FA", "#B2EBF2", "#80DEEA", "#4DD0E1", "#26C6DA", "#00BCD4", "#0097A7", "#006064",
+  // Blues (Sky to Navy)
+  "#E3F2FD", "#BBDEFB", "#90CAF9", "#64B5F6", "#42A5F5", "#2196F3", "#1976D2", "#0D47A1",
+  // Purples (Lavender to Deep Grape)
+  "#F3E5F5", "#E1BEE7", "#CE93D8", "#BA68C8", "#AB47BC", "#9C27B0", "#7B1FA2", "#4A148C",
+];
 
 const App: Component = () => {
+  let initPalette = defaultPalette.map((colourHex, idx) => {
+    let colour = new THREE.Color().set(colourHex);
+    return { id: window.crypto.randomUUID(), colour, };
+  });
   let [ state, setState, ] = createStore<{
     mkMode: { new(modeParams: ModeParams): Mode, },
     pointerPos: THREE.Vector2 | undefined,
     pointerDown: boolean,
     pixelSize: number,
+    palette: { id: string, colour: THREE.Color, }[],
+    selectedColourById: string | undefined,
   }>({
     mkMode: IdleMode,
     pointerPos: undefined,
     pointerDown: false,
     pixelSize: 1,
+    palette: initPalette,
+    selectedColourById: initPalette[50].id,
+  });
+  let currentColour = createMemo(() => {
+    let colourId = state.selectedColourById;
+    if (colourId == undefined) {
+      return undefined;
+    }
+    return state.palette.find(({ id }) => id === colourId)?.colour;
   });
   let brickMap = new BrickMap();
   let [ rendererViewController, setRendererViewController, ] = createSignal<RendererViewController>();
@@ -33,6 +69,7 @@ const App: Component = () => {
     canvasSize: () => rendererViewController()?.canvasSize(),
     pointerPos: () => state.pointerPos,
     pointerDown: () => state.pointerDown,
+    currentColour,
     updateSdf: () => {
       let controller = rendererViewController();
       controller?.onBrickMapChanged();
@@ -236,9 +273,14 @@ const App: Component = () => {
           position: "absolute",
           left: "0",
           top: "0",
+          "pointer-events": "none",
         }}
       >
-        <div>
+        <div
+          style={{
+            "pointer-events": "auto",
+          }}
+        >
           <button
             class="btn btn-primary"
             onClick={() => setMode(InsertPrimitivesMode)}
@@ -337,7 +379,29 @@ const App: Component = () => {
             </label>
           </div>
         </div>
-        <ModeInstructions/>
+        <div
+          style={{
+            "pointer-events": "auto",
+            "width": "fit-content",
+          }}
+        >
+          <ModeInstructions/>
+        </div>
+        <div
+          style={{
+            "pointer-events": "auto",
+            "width": "fit-content",
+          }}
+        >
+          <ColourInput
+            squareSize={20}
+            colours={state.palette}
+            addColour={() => { return { id: "", }; }}
+            removeColour={() => {}}
+            selectedColourById={state.selectedColourById}
+            setSelectedColour={(colourId) => setState("selectedColourById", colourId)}
+          />
+        </div>
       </div>
     </div>
   );
