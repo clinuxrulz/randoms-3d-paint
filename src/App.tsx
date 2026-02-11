@@ -13,6 +13,7 @@ import { loadScene, saveScene } from './load-save';
 import { PaintMode } from './modes/PaintMode';
 import Palette from './Palette';
 import ColourInput from './ColourInput';
+import { march, pointsAndTriangleIndicesToGeometry } from './marching_cubes/marching_cubes';
 
 const defaultPalette = [
   // Grayscale (White to Black)
@@ -45,13 +46,22 @@ const App: Component = () => {
     pixelSize: number,
     palette: { id: string, colour: THREE.Color, }[],
     selectedColourById: string | undefined,
+    showingMarchedGeometry: THREE.BufferGeometry | undefined,
   }>({
     mkMode: IdleMode,
     pointerPos: undefined,
     pointerDown: false,
-    pixelSize: 1,
+    pixelSize: 4,
     palette: initPalette,
     selectedColourById: initPalette[50].id,
+    showingMarchedGeometry: undefined,
+  });
+  onCleanup(() => {
+    let geometry = state.showingMarchedGeometry;
+    if (geometry != undefined) {
+      geometry.dispose();
+    }
+    setState("showingMarchedGeometry", undefined);
   });
   let currentColour = createMemo(() => {
     let colourId = state.selectedColourById;
@@ -101,7 +111,7 @@ const App: Component = () => {
     </Show>
   );
   let disableOrbit = createMemo(() => mode().disableOrbit?.() ?? false);
-  let overlayObject3D = createMemo(() => mode().overlayObject3D?.());
+  let modeOverlayObject3D = createMemo(() => mode().overlayObject3D?.());
   let useTransformControlOnObject3D = createMemo(() => mode().useTransformControlOnObject3D?.());
   let [ renderDiv, setRenderDiv, ] = createSignal<HTMLDivElement>();
   let [ isTransformDragging, setTransformDragging, ] = createSignal(false);
@@ -231,6 +241,59 @@ const App: Component = () => {
   let save = async () => {
     await saveScene("quicksave.dat", brickMap);
   };
+  let march_ = () => {
+    let pointsAndTriangleIndices = march({
+      sdf: (x: number, y: number, z: number) => (128.0 - brickMap.get(512 + x*10/2, 512 + y*10/2, 512 + z*10/2)) / 127.0,
+      minX: -51*2,
+      minY: -51*2,
+      minZ: -51*2,
+      maxX: 51*2,
+      maxY: 51*2,
+      maxZ: 51*2,
+      cubeSize: 1,
+      interpolate: true,
+    });
+    for (let i = 0; i < pointsAndTriangleIndices.points.length; ++i) {
+      pointsAndTriangleIndices.points[i] *= 50.0;
+    }
+    let geometry = pointsAndTriangleIndicesToGeometry(pointsAndTriangleIndices);
+    setState("showingMarchedGeometry", geometry);
+  };
+  let clearMarch = () => {
+    if (state.showingMarchedGeometry == undefined) {
+      return;
+    }
+    state.showingMarchedGeometry.dispose();
+    setState("showingMarchedGeometry", undefined);
+    modeParams.rerender();
+  };
+  let showingMarchedMesh = createMemo(() => {
+    if (state.showingMarchedGeometry == undefined) {
+      return undefined;
+    }
+    let material = new THREE.MeshStandardMaterial({ color: "blue", });
+    onCleanup(() => {
+      material.dispose();
+    });
+    let mesh = new THREE.Mesh(state.showingMarchedGeometry, material);
+    modeParams.rerender();
+    return mesh;
+  });
+  let overlayObject3D = createMemo(() => {
+    let objects = [
+      modeOverlayObject3D(),
+      showingMarchedMesh(),
+    ].filter((x) => x !== undefined);
+    if (objects.length == 0) {
+      return undefined;
+    } else if (objects.length == 1) {
+      return objects[0];
+    } else {
+      let group = new THREE.Group();
+      group.add(...objects);
+      return group;
+    }
+  });
   return (
     <div
       style={{
@@ -255,6 +318,7 @@ const App: Component = () => {
       >
         <RendererView
           brickMap={brickMap}
+          hideBrickMap={showingMarchedMesh() != undefined}
           onDragingEvent={(isDraging) => {
             setTransformDragging(isDraging);
           }}
@@ -317,6 +381,22 @@ const App: Component = () => {
           >
             Save
           </button>
+          <Show when={state.showingMarchedGeometry == undefined}>
+            <button
+              class="btn btn-primary ml-2"
+              onClick={() => march_()}
+            >
+              March
+            </button>
+          </Show>
+          <Show when={state.showingMarchedGeometry != undefined}>
+            <button
+              class="btn btn-primary ml-2"
+              onClick={() => clearMarch()}
+            >
+              Clear March
+            </button>
+          </Show>
           <Show when={areTransformControlsVisible()}>
             <button
               class="btn btn-primary ml-2"

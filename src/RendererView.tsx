@@ -21,6 +21,7 @@ export type RendererViewController = {
 
 const RendererView: Component<{
   brickMap: BrickMap,
+  hideBrickMap: boolean,
   onDragingEvent: (isDraging: boolean) => void,
   onInit: (controller: RendererViewController) => void,
   disableOrbit: boolean,
@@ -204,7 +205,9 @@ void main(void) {
         material.uniforms.cameraPosition.value.copy(camera2.position);
         //renderer2.clearColor();
         renderer2.clearDepth();
-        fullScreenQuad.render(renderer2);
+        if (!props.hideBrickMap) {
+          fullScreenQuad.render(renderer2);
+        }
         renderer2.render(scene, camera2);
         isRendering = false;
       });
