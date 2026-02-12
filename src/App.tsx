@@ -241,6 +241,7 @@ const App: Component = () => {
   let load = async () => {
     await loadScene("quicksave.dat", brickMap);
     modeParams.updateSdf();
+    modeParams.updatePaint();
   };
   let save = async () => {
     await saveScene("quicksave.dat", brickMap);

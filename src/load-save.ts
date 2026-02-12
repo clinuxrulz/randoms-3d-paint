@@ -44,11 +44,11 @@ export class ReaderHelper {
 
 async function loadFromReader(version: number, reader: ReadableStreamDefaultReader<Uint8Array>, brickMap: BrickMap) {
   let reader2 = new ReaderHelper(reader);
-  await brickMap.load(reader2);
+  await brickMap.load(version, reader2);
 }
 
 async function saveToWriter(version: number, writer: WritableStreamDefaultWriter<BufferSource>, brikMap: BrickMap) {
-  await brikMap.save(writer);
+  await brikMap.save(version, writer);
 }
 
 async function loadFromReadable(readable: ReadableStream<Uint8Array>, brickMap: BrickMap) {
@@ -88,7 +88,7 @@ async function loadFromReadable(readable: ReadableStream<Uint8Array>, brickMap: 
 }
 
 async function saveToWritable(writable: WritableStream<Uint8Array>, brickMap: BrickMap) {
-  let version = 1;
+  let version = 2;
   let versionBuffer = new Uint8Array([version & 0xFF, (version >> 8) & 0xFF]);
   {
     let writer = writable.getWriter();

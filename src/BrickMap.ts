@@ -44,6 +44,7 @@ export class BrickMap {
   private dirtyColourBricks = new Set<number>();
 
   private forceAllAtlasDirty = false;
+  private forceAllColoursDirty = false;
 
   get numBricks(): number {
     return this.brickMap.size;
@@ -55,7 +56,7 @@ export class BrickMap {
     }
   }
 
-  async load(reader: ReaderHelper) {
+  async load(version: number, reader: ReaderHelper) {
     await reader.read(
       this.indirectionData,
       0,
@@ -64,6 +65,7 @@ export class BrickMap {
     let usedBricks = new Set<number>();
     this.brickMap.clear();
     let brickBuffer = new Uint8Array(BRICK_P_RES ** 3);
+    let coloursBuffer = new Uint8Array((BRICK_P_RES ** 3) << 2);
     for (let i = 0, gridIdx = 0; i < this.indirectionData.length; i += 4, ++gridIdx) {
       let ax = this.indirectionData[i];
       let ay = this.indirectionData[i+1];
@@ -93,6 +95,31 @@ export class BrickMap {
             }
           }
         }
+        if (version >= 2) {
+          await reader.read(coloursBuffer, 0, coloursBuffer.length);
+          let at =
+            (
+              (az * BRICK_P_RES) << (ATLAS_RES_BITS + ATLAS_RES_BITS) |
+              (ay * BRICK_P_RES) << ATLAS_RES_BITS |
+              (ax * BRICK_P_RES)
+            ) << 2;
+          let stepK = 1 << 2;
+          let stepJ = (1 << ATLAS_RES_BITS) << 2;
+          let stepI = (1 << (ATLAS_RES_BITS + ATLAS_RES_BITS)) << 2;
+          let bufferIdx = 0;
+          for (let i = 0; i < BRICK_P_RES; ++i, at += stepI) {
+            let at2 = at;
+            for (let j = 0; j < BRICK_P_RES; ++j, at2 += stepJ) {
+              let at3 = at2;
+              for (let k = 0; k < BRICK_P_RES; ++k, at3 += stepK, bufferIdx += 4) {
+                this.colourData[at3] = coloursBuffer[bufferIdx];
+                this.colourData[at3+1] = coloursBuffer[bufferIdx+1];
+                this.colourData[at3+2] = coloursBuffer[bufferIdx+2];
+                this.colourData[at3+3] = coloursBuffer[bufferIdx+3];
+              }
+            }
+          }
+        }
       }
     }
     this.freeBricks.splice(0, this.freeBricks.length);
@@ -102,11 +129,13 @@ export class BrickMap {
       }
     }
     this.forceAllAtlasDirty = true;
+    this.forceAllColoursDirty = true;
   }
 
-  async save(writer: WritableStreamDefaultWriter<BufferSource>) {
+  async save(version: number, writer: WritableStreamDefaultWriter<BufferSource>) {
     await writer.write(this.indirectionData);
     let brickBuffer = new Uint8Array(BRICK_P_RES ** 3);
+    let coloursBuffer = new Uint8Array((BRICK_P_RES ** 3) << 2);
     for (let i = 0, gridIdx = 0; i < this.indirectionData.length; i += 4, ++gridIdx) {
       let ax = this.indirectionData[i];
       let ay = this.indirectionData[i+1];
@@ -131,6 +160,31 @@ export class BrickMap {
           }
         }
         await writer.write(brickBuffer);
+        if (version >= 2) {
+          let at =
+            (
+              (az * BRICK_P_RES) << (ATLAS_RES_BITS + ATLAS_RES_BITS) |
+              (ay * BRICK_P_RES) << ATLAS_RES_BITS |
+              (ax * BRICK_P_RES)
+            ) << 2;
+          let stepK = 1 << 2;
+          let stepJ = (1 << ATLAS_RES_BITS) << 2;
+          let stepI = (1 << (ATLAS_RES_BITS + ATLAS_RES_BITS)) << 2;
+          let bufferIdx = 0;
+          for (let i = 0; i < BRICK_P_RES; ++i, at += stepI) {
+            let at2 = at;
+            for (let j = 0; j < BRICK_P_RES; ++j, at2 += stepJ) {
+              let at3 = at2;
+              for (let k = 0; k < BRICK_P_RES; ++k, at3 += stepK, bufferIdx += 4) {
+                coloursBuffer[bufferIdx] = this.colourData[at3];
+                coloursBuffer[bufferIdx+1] = this.colourData[at3+1];
+                coloursBuffer[bufferIdx+2] = this.colourData[at3+2];
+                coloursBuffer[bufferIdx+3] = this.colourData[at3+3];
+              }
+            }
+          }
+        }
+        await writer.write(coloursBuffer);
       }
     }
   }
@@ -649,6 +703,12 @@ export class BrickMap {
   updatePaintThreeJs(renderer: THREE.WebGLRenderer, textures: BrickMapTHREETextures) {
     const gl = renderer.getContext() as WebGL2RenderingContext;
     let textureProperties = renderer.properties.get(textures.cTex);
+    if (this.forceAllColoursDirty) {
+      textures.cTex.needsUpdate = true;
+      this.dirtyColourBricks.clear();
+      this.forceAllColoursDirty = false;
+      return;
+    }
     if (!(textureProperties as any).__webglTexture) {
       textures.cTex.needsUpdate = true;
       this.dirtyColourBricks.clear();
