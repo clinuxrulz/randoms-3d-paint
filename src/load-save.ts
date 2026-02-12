@@ -1,4 +1,5 @@
 import { BrickMap } from "./BrickMap";
+import FileSaver from "file-saver";
 
 export class ReaderHelper {
   private reader: ReadableStreamDefaultReader<Uint8Array>;
@@ -105,6 +106,21 @@ async function saveToWritable(writable: WritableStream<Uint8Array>, brickMap: Br
   await savePromise;
 }
 
+export async function uploadScene(file: File, brickMap: BrickMap) {
+  let readable = await file.stream();
+  await loadFromReadable(readable, brickMap);
+}
+
+export async function downloadScene(filename: string, brickMap: BrickMap) {
+  let {
+    writable,
+    result: blob,
+  } = createWritableStreamToBlob("application/octet-stream");
+  await saveToWritable(writable, brickMap);
+  let blob2 = await blob;
+  FileSaver.saveAs(blob2, filename);
+}
+
 export async function loadScene(fileName: string, brickMap: BrickMap): Promise<boolean> {
   let dir = await navigator.storage.getDirectory();
   let fileHandle: FileSystemFileHandle;
@@ -136,4 +152,32 @@ export async function saveScene(fileName: string, brickMap: BrickMap) {
   let file = await fileHandle.getFile();
   console.log("File size:", file.size);
   //
+}
+
+function createWritableStreamToBlob(mimeType: string): {
+  writable: WritableStream<Uint8Array<ArrayBuffer>>,
+  result: Promise<Blob>,
+} {
+  let chunks: Uint8Array<ArrayBuffer>[] = [];
+  let resolve: (blob: Blob) => void = () => {};
+  let reject: (reason: any) => void = () => {};
+  let result = new Promise<Blob>((resolve2, reject2) => {
+    resolve = resolve2;
+    reject = reject2;
+  });
+  let writable = new WritableStream<Uint8Array<ArrayBuffer>>({
+    write(chunk) {
+      chunks.push(chunk);
+    },
+    close() {
+      resolve(new Blob(chunks, { type: mimeType }));
+    },
+    abort(err) {
+      reject(err);
+    },
+  });
+  return {
+    writable,
+    result,
+  }
 }

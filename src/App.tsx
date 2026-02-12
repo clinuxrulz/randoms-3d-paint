@@ -1,4 +1,4 @@
-import { batch, createComputed, createMemo, createSignal, on, onCleanup, onMount, Show, type Component } from 'solid-js';
+import { batch, createComputed, createMemo, createSignal, on, onCleanup, onMount, Show, untrack, type Component } from 'solid-js';
 import * as THREE from "three";
 import { GLTFExporter } from "three/addons/exporters/GLTFExporter.js";
 import { BrickMap, BrickMapTextures } from './BrickMap';
@@ -10,7 +10,7 @@ import { IdleMode } from './modes/IdleMode';
 import { DrawMode } from './modes/DrawMode';
 import { InsertPrimitivesMode } from './modes/InsertPrimitivesMode';
 import { SculptMode } from './modes/SculptMode';
-import { loadScene, saveScene } from './load-save';
+import { downloadScene, loadScene, saveScene, uploadScene } from './load-save';
 import { PaintMode } from './modes/PaintMode';
 import ColourInput from './ColourInput';
 import { march, pointsAndTriangleIndicesToGeometry } from './marching_cubes/marching_cubes';
@@ -238,13 +238,32 @@ const App: Component = () => {
     let controller = rendererViewController();
     controller?.scaleTransform();
   };
-  let load = async () => {
+  let loadSnapshot = async () => {
     await loadScene("quicksave.dat", brickMap);
     modeParams.updateSdf();
     modeParams.updatePaint();
   };
-  let save = async () => {
+  let saveSnapshot = async () => {
     await saveScene("quicksave.dat", brickMap);
+  };
+  let load = async (file: File) => {
+    await uploadScene(file, brickMap);
+    modeParams.updateSdf();
+    modeParams.updatePaint();
+  };
+  let save = async () => {
+    let filename = window.prompt("Enter filename:");
+    if (filename == null) {
+      return;
+    }
+    filename = filename.trim();
+    if (filename == "") {
+      return;
+    }
+    if (!filename.toLowerCase().endsWith(".randoms-3d-paint")) {
+      filename += ".randoms-3d-paint";
+    }
+    await downloadScene(filename, brickMap);
   };
   let march_ = () => {
     let pointsAndTriangleIndices = march({
@@ -466,10 +485,44 @@ const App: Component = () => {
           </button>
           <button
             class="btn btn-primary ml-2"
-            onClick={() => load()}
+            onClick={() => loadSnapshot()}
           >
-            Load
+            Load SS
           </button>
+          <button
+            class="btn btn-primary ml-2"
+            onClick={() => saveSnapshot()}
+          >
+            Save SS
+          </button>
+          {untrack(() => {
+            let [ fileInput, setFileInput, ] = createSignal<HTMLInputElement>();
+            return (<>
+              <button
+                class="btn btn-primary ml-2"
+                onClick={() => fileInput()?.click()}
+              >
+                Load
+              </button>
+              <input
+                ref={setFileInput}
+                type="file"
+                onChange={(e) => {
+                  let files = e.currentTarget.files;
+                  if (files == null) {
+                    return;
+                  }
+                  if (files.length != 1) {
+                    return;
+                  }
+                  let file = files[0];
+                  load(file);
+                  e.currentTarget.value = "";
+                }}
+                hidden
+              />
+            </>);
+          })}
           <button
             class="btn btn-primary ml-2"
             onClick={() => save()}
