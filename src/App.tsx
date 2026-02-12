@@ -1,5 +1,6 @@
 import { batch, createComputed, createMemo, createSignal, on, onCleanup, onMount, Show, type Component } from 'solid-js';
 import * as THREE from "three";
+import { GLTFExporter } from "three/addons/exporters/GLTFExporter.js";
 import { BrickMap, BrickMapTextures } from './BrickMap';
 import RendererView, { RendererViewController } from './RendererView';
 import { createStore } from 'solid-js/store';
@@ -15,6 +16,8 @@ import ColourInput from './ColourInput';
 import { march, pointsAndTriangleIndicesToGeometry } from './marching_cubes/marching_cubes';
 // @ts-ignore
 import { UVUnwrapper } from 'xatlas-three';
+import FileSaver from "file-saver";
+import { renderTargetToDataURL } from './util';
 
 const defaultPalette = [
   // Grayscale (White to Black)
@@ -299,7 +302,7 @@ const App: Component = () => {
     })();
     return mesh;
   });
-  let bake = () => {
+  let bake = async () => {
     const renderer = rendererViewController()?.renderer();
     const mesh = showingMarchedMesh();
     if (!renderer || !mesh) return;
@@ -332,14 +335,43 @@ const App: Component = () => {
     mesh.material = bakeMaterial;
     renderer.setRenderTarget(renderTarget);
     renderer.render(mesh, bakeCamera);
+    let imageUrl = renderTargetToDataURL(renderer, renderTarget);
+    if (imageUrl == undefined) {
+      return;
+    }
     renderer.setRenderTarget(oldTarget);
+    let texture = await new THREE.TextureLoader().loadAsync(imageUrl);
+    texture.flipY = false;
     const finalMaterial = new THREE.MeshStandardMaterial({ 
-      map: renderTarget.texture 
+      map: texture,
     });
     mesh.material = finalMaterial;
     if (originalMaterial) originalMaterial.dispose();
     bakeMaterial.dispose(); 
     modeParams.rerender();
+  };
+  let exportToGlb = async () => {
+    const mesh = showingMarchedMesh();
+    if (mesh == undefined) {
+      return;
+    }
+    let filename = window.prompt("Enter filename:");
+    if (filename == null) {
+      return;
+    }
+    filename = filename.trim();
+    if (filename == "") {
+      return;
+    }
+    if (!filename.toLowerCase().endsWith(".glb")) {
+      filename += ".glb";
+    }
+    let exporter = new GLTFExporter();
+    let result = (await exporter.parseAsync(mesh, { binary: true, })) as ArrayBuffer;
+    FileSaver.saveAs(
+      new Blob([ result, ], { type: "model/gltf-binary", }),
+      filename,
+    );
   };
   let overlayObject3D = createMemo(() => {
     let objects = [
@@ -463,6 +495,12 @@ const App: Component = () => {
               onClick={() => bake()}
             >
               Bake
+            </button>
+            <button
+              class="btn btn-primary ml-2"
+              onClick={() => exportToGlb()}
+            >
+              Export
             </button>
           </Show>
           <Show when={areTransformControlsVisible()}>
