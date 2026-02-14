@@ -1,6 +1,7 @@
 import * as THREE from "three";
 
 export type Operation = {
+  index: number,
   combinedType: "Add" | "Subtract",
   transform: THREE.Matrix4,
   operationShape: OperationShape,
@@ -157,7 +158,7 @@ type BVHNode = {
   operation: Operation | null;
 };
 
-export class DynamicOperationBVH {
+export class OperationBVH {
   private root: BVHNode | null = null;
   private nodeMap = new Map<Operation, BVHNode>();
 
