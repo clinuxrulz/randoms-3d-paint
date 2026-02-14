@@ -128,3 +128,147 @@ function capsuleBoundingBox(lenX: number, radius: number, out: THREE.Box3) {
   out.min.set(-radius, -radius, -radius);
   out.max.set(lenX + radius, radius, radius);
 }
+
+let _getOperationWorldBounds_vertices: [
+  THREE.Vector3, THREE.Vector3, THREE.Vector3, THREE.Vector3,
+  THREE.Vector3, THREE.Vector3, THREE.Vector3, THREE.Vector3
+] = [
+  new THREE.Vector3(), new THREE.Vector3(), new THREE.Vector3(), new THREE.Vector3(),
+  new THREE.Vector3(), new THREE.Vector3(), new THREE.Vector3(), new THREE.Vector3(),
+];
+export function getOperationWorldBounds(
+  op: Operation,
+  out: THREE.Box3,
+) {
+  out.makeEmpty();
+  let vertices = _getOperationWorldBounds_vertices;
+  operationCornerPoints(op, vertices);
+  for (const v of vertices) {
+    out.expandByPoint(v);
+  }
+}
+
+type BVHNode = {
+  bounds: THREE.Box3;
+  parent: BVHNode | null;
+  left: BVHNode | null;
+  right: BVHNode | null;
+   // Only non-null for leaf nodes
+  operation: Operation | null;
+};
+
+export class DynamicOperationBVH {
+  private root: BVHNode | null = null;
+  private nodeMap = new Map<Operation, BVHNode>();
+
+  constructor(initialOps: Operation[] = []) {
+    for (const op of initialOps) {
+      this.insert(op);
+    }
+  }
+
+  insert(op: Operation) {
+    let bounds = new THREE.Box3();
+    getOperationWorldBounds(op, bounds);
+    const newNode: BVHNode = {
+      bounds,
+      parent: null,
+      left: null,
+      right: null,
+      operation: op
+    };
+    this.nodeMap.set(op, newNode);
+    if (!this.root) {
+      this.root = newNode;
+      return;
+    }
+    let bestSibling = this.root;
+    while (bestSibling.left && bestSibling.right) {
+      const leftExpansion = this.getExpansionCost(bestSibling.left, bounds);
+      const rightExpansion = this.getExpansionCost(bestSibling.right, bounds);
+      bestSibling = leftExpansion < rightExpansion ? bestSibling.left : bestSibling.right;
+    }
+    const oldParent = bestSibling.parent;
+    const newInternal: BVHNode = {
+      bounds: new THREE.Box3().union(bestSibling.bounds).union(bounds),
+      parent: oldParent,
+      left: bestSibling,
+      right: newNode,
+      operation: null
+    };
+    bestSibling.parent = newInternal;
+    newNode.parent = newInternal;
+    if (oldParent) {
+      if (oldParent.left === bestSibling) oldParent.left = newInternal;
+      else oldParent.right = newInternal;
+    } else {
+      this.root = newInternal;
+    }
+    this.refitAncestors(newInternal);
+  }
+
+  remove(op: Operation) {
+    const node = this.nodeMap.get(op);
+    if (!node) return;
+    this.nodeMap.delete(op);
+    if (node === this.root) {
+      this.root = null;
+      return;
+    }
+    const parent = node.parent!;
+    const sibling = parent.left === node ? parent.right! : parent.left!;
+    const grandParent = parent.parent;
+    if (grandParent) {
+      if (grandParent.left === parent) grandParent.left = sibling;
+      else grandParent.right = sibling;
+      sibling.parent = grandParent;
+      this.refitAncestors(grandParent);
+    } else {
+      this.root = sibling;
+      sibling.parent = null;
+    }
+  }
+
+  update(op: Operation) {
+    const node = this.nodeMap.get(op);
+    if (!node) return;
+    let newBounds = new THREE.Box3();
+    getOperationWorldBounds(op, newBounds);
+    if (!node.bounds.containsBox(newBounds)) {
+      this.remove(op);
+      this.insert(op);
+    }
+  }
+
+  query(aabb: THREE.Box3, result: Operation[] = []): Operation[] {
+    if (this.root) this._queryRecursive(this.root, aabb, result);
+    return result;
+  }
+
+  private _queryRecursive(node: BVHNode, aabb: THREE.Box3, result: Operation[]) {
+    if (!node.bounds.intersectsBox(aabb)) return;
+    if (node.operation) {
+      if (isOperationPossiblyInAabb(node.operation, aabb)) {
+        result.push(node.operation);
+      }
+    } else {
+      if (node.left) this._queryRecursive(node.left, aabb, result);
+      if (node.right) this._queryRecursive(node.right, aabb, result);
+    }
+  }
+
+  private refitAncestors(node: BVHNode | null) {
+    while (node) {
+      node.bounds.copy(node.left!.bounds).union(node.right!.bounds);
+      node = node.parent;
+    }
+  }
+
+  private getExpansionCost(node: BVHNode, newBounds: THREE.Box3): number {
+    const combined = new THREE.Box3().copy(node.bounds).union(newBounds);
+    const size = new THREE.Vector3();
+    combined.getSize(size);
+    // Surface Area
+    return 2 * (size.x * size.y + size.y * size.z + size.z * size.x);
+  }
+}
