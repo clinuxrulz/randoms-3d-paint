@@ -29,11 +29,11 @@ export function operationEvalSDF(operation: Operation, pt: THREE.Vector3): numbe
   let shape = operation.operationShape;
   switch (shape.type) {
     case "Ellipsoid":
-      return ellipsoidSDF(shape.radius, pt);
+      return ellipsoidSDF(shape.radius, pt2);
     case "Box":
-      return boxSDF(shape.len, pt);
+      return boxSDF(shape.len, pt2);
     case "Capsule":
-      return capsuleSDF(shape.lenX, shape.radius, pt);
+      return capsuleSDF(shape.lenX, shape.radius, pt2);
   }
 }
 
@@ -171,16 +171,34 @@ export function operationShapeBoundingBox(shape: OperationShape, out: THREE.Box3
 function ellipsoidBoundingBox(radius: THREE.Vector3, out: THREE.Box3) {
   out.min.copy(radius).multiplyScalar(-1.0);
   out.max.copy(radius);
+  out.min.x -= 20.0;
+  out.min.y -= 20.0;
+  out.min.z -= 20.0;
+  out.max.x += 20.0;
+  out.max.y += 20.0;
+  out.max.z += 20.0;
 }
 
 function boxBoundingBox(len: THREE.Vector3, out: THREE.Box3) {
   out.min.copy(len).multiplyScalar(-0.5);
   out.max.copy(len).multiplyScalar(0.5);
+  out.min.x -= 20.0;
+  out.min.y -= 20.0;
+  out.min.z -= 20.0;
+  out.max.x += 20.0;
+  out.max.y += 20.0;
+  out.max.z += 20.0;
 }
 
 function capsuleBoundingBox(lenX: number, radius: number, out: THREE.Box3) {
   out.min.set(-radius, -radius, -radius);
   out.max.set(lenX + radius, radius, radius);
+  out.min.x -= 20.0;
+  out.min.y -= 20.0;
+  out.min.z -= 20.0;
+  out.max.x += 20.0;
+  out.max.y += 20.0;
+  out.max.z += 20.0;
 }
 
 let _getOperationWorldBounds_vertices: [
@@ -344,6 +362,7 @@ export class OperationBVH {
     let minY = (minYIdx - 512) * 10.0;
     let minZ = (minZIdx - 512) * 10.0;
     let pt = this._updateBrickMap_pt;
+    let sqrt3 = Math.sqrt(3.0);
     for (let i = minZIdx, atMinZ = minZ; i <= maxZIdx; ++i, atMinZ += 10.0) {
       for (let j = minYIdx, atMinY = minY; j <= maxYIdx; ++j, atMinY += 10.0) {
         for (let k = minXIdx, atMinX = minX; k <= maxXIdx; ++k, atMinX += 10.0) {
@@ -366,7 +385,8 @@ export class OperationBVH {
             }
           }
           if (Number.isFinite(dist)) {
-            let a = Math.max(1, Math.min(255, 128 - Math.floor(127.0 * dist / 10.0)));
+            dist /= 10.0 * sqrt3;
+            let a = Math.max(1, Math.min(255, 128 - Math.floor(127.0 * dist)));
             brickMap.set(k, j, i, a);
           } else {
             brickMap.set(k, j, i, 0);
