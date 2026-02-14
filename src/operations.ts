@@ -1,12 +1,112 @@
 import * as THREE from "three";
 import { BrickMap } from "./BrickMap";
 
+export class Operations {
+  operations: Operation[] = [];
+  bvh: OperationBVH = new OperationBVH();
+  dirtyRegion: THREE.Box3 = new THREE.Box3();
+  combineMode: "Add" | "Subtract" | "Paint" = "Add";
+
+  private _tmpBBox = new THREE.Box3();
+
+  insertEllipsoid(
+    origin: THREE.Vector3,
+    orientation: THREE.Quaternion,
+    radius: THREE.Vector3,
+  ): void {
+    let op: Operation = {
+      index: this.operations.length,
+      combinedType: this.combineMode,
+      origin: new THREE.Vector3().copy(origin),
+      orientation: new THREE.Quaternion().copy(orientation),
+      operationShape: {
+        type: "Ellipsoid",
+        radius: new THREE.Vector3().copy(radius),
+      },
+    };
+    let bbox = this._tmpBBox;
+    getOperationWorldBounds(op, bbox);
+    this.dirtyRegion.union(bbox);
+    this.operations.push(op);
+    this.bvh.insert(op);
+  }
+
+  insertBox(
+    origin: THREE.Vector3,
+    orientation: THREE.Quaternion,
+    len: THREE.Vector3,
+  ): void {
+    let op: Operation = {
+      index: this.operations.length,
+      combinedType: this.combineMode,
+      origin: new THREE.Vector3().copy(origin),
+      orientation: new THREE.Quaternion().copy(orientation),
+      operationShape: {
+        type: "Box",
+        len: new THREE.Vector3().copy(len),
+      },
+    };
+    let bbox = this._tmpBBox;
+    getOperationWorldBounds(op, bbox);
+    this.dirtyRegion.union(bbox);
+    this.operations.push(op);
+    this.bvh.insert(op);
+  }
+
+  insertCapsule(
+    origin: THREE.Vector3,
+    orientation: THREE.Quaternion,
+    lenX: number,
+    radius: number,
+  ): void {
+    let op: Operation = {
+      index: this.operations.length,
+      combinedType: this.combineMode,
+      origin: new THREE.Vector3().copy(origin),
+      orientation: new THREE.Quaternion().copy(orientation),
+      operationShape: {
+        type: "Capsule",
+        lenX,
+        radius,
+      },
+    };
+    let bbox = this._tmpBBox;
+    getOperationWorldBounds(op, bbox);
+    this.dirtyRegion.union(bbox);
+    this.operations.push(op);
+    this.bvh.insert(op);
+  }
+
+  updateBrickMap(brickMap: BrickMap): void {
+    if (this.dirtyRegion.isEmpty()) {
+      return;
+    }
+    let minXIdx = Math.floor(this.dirtyRegion.min.x / 10.0) + 512;
+    let minYIdx = Math.floor(this.dirtyRegion.min.y / 10.0) + 512;
+    let minZIdx = Math.floor(this.dirtyRegion.min.z / 10.0) + 512;
+    let maxXIdx = Math.ceil(this.dirtyRegion.max.x / 10.0) + 512;
+    let maxYIdx = Math.ceil(this.dirtyRegion.max.y / 10.0) + 512;
+    let maxZIdx = Math.ceil(this.dirtyRegion.max.z / 10.0) + 512;
+    this.bvh.updateBrickMap(
+      brickMap,
+      minXIdx,
+      minYIdx,
+      minZIdx,
+      maxXIdx,
+      maxYIdx,
+      maxZIdx,
+    );
+    this.dirtyRegion.makeEmpty();
+  }
+}
+
 export type Operation = {
   index: number,
-  combinedType: "Add" | "Subtract",
+  combinedType: "Add" | "Subtract" | "Paint",
   origin: THREE.Vector3,
   orientation: THREE.Quaternion,
   operationShape: OperationShape,
+  colour?: THREE.Color,
 };
 
 export type OperationShape = {
@@ -361,18 +461,22 @@ export class OperationBVH {
     let minX = (minXIdx - 512) * 10.0;
     let minY = (minYIdx - 512) * 10.0;
     let minZ = (minZIdx - 512) * 10.0;
+    let maxX = (maxXIdx - 512) * 10.0;
+    let maxY = (maxYIdx - 512) * 10.0;
+    let maxZ = (maxZIdx - 512) * 10.0;
+    aabb.min.set(minX, minY, minZ);
+    aabb.max.set(maxX, maxY, maxZ);
+    this.query(aabb, operations);
+    operations.sort((a, b) => a.index - b.index);
     let pt = this._updateBrickMap_pt;
     let sqrt3 = Math.sqrt(3.0);
     for (let i = minZIdx, atMinZ = minZ; i <= maxZIdx; ++i, atMinZ += 10.0) {
       for (let j = minYIdx, atMinY = minY; j <= maxYIdx; ++j, atMinY += 10.0) {
         for (let k = minXIdx, atMinX = minX; k <= maxXIdx; ++k, atMinX += 10.0) {
-          aabb.min.set(atMinX - 10.0, atMinY - 10.0, atMinZ - 10.0);
-          aabb.max.set(atMinX + 10.0, atMinY + 10.0, atMinZ + 10.0);
-          operations.splice(0, operations.length);
-          this.query(aabb, operations);
           operations.sort((a, b) => a.index - b.index);
-          pt.copy(aabb.min);
+          pt.set(atMinX, atMinY, atMinZ);
           let dist = Number.POSITIVE_INFINITY;
+          let colour: THREE.Color | undefined = undefined;
           for (let operation of operations) {
             let a = operationEvalSDF(operation, pt);
             switch (operation.combinedType) {
@@ -382,6 +486,11 @@ export class OperationBVH {
               case "Subtract":
                 dist = Math.max(dist, -a);
                 break;
+              case "Paint":
+                if (a <= 0.0) {
+                  colour ??= operation.colour;
+                }
+                break;
             }
           }
           if (Number.isFinite(dist)) {
@@ -390,6 +499,17 @@ export class OperationBVH {
             brickMap.set(k, j, i, a);
           } else {
             brickMap.set(k, j, i, 0);
+          }
+          if (colour != undefined) {
+            let red = Math.floor(colour.r * 255.0);
+            let green = Math.floor(colour.g * 255.0);
+            let blue = Math.floor(colour.b * 255.0);
+            brickMap.paint(
+              k, j, i,
+              red,
+              green,
+              blue,
+            );
           }
         }
       }
