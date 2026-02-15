@@ -36,10 +36,26 @@ export class ReaderHelper {
   }
 
   private readBuffer = new Uint8Array(16);
+  private dataView = new DataView(this.readBuffer.buffer);
+
+  async readU8(): Promise<number> {
+    await this.read(this.readBuffer, 0, 1);
+    return this.readBuffer[0];
+  }
 
   async readU16(): Promise<number> {
     await this.read(this.readBuffer, 0, 2);
     return this.readBuffer[0] | (this.readBuffer[1] << 8);
+  }
+
+  async readU32(): Promise<number> {
+    await this.read(this.readBuffer, 0, 4);
+    return this.dataView.getUint32(0, true);
+  }
+
+  async readF32(): Promise<number> {
+    await this.read(this.readBuffer, 0, 4);
+    return this.dataView.getFloat32(0, true);
   }
 }
 

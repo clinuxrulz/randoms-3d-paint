@@ -1,5 +1,6 @@
 import * as THREE from "three";
 import { BrickMap } from "./BrickMap";
+import { ReaderHelper } from "./load-save";
 
 export class Operations {
   operations: Operation[] = [];
@@ -8,6 +9,31 @@ export class Operations {
   combineMode: "Add" | "Subtract" | "Paint" = "Add";
 
   private _tmpBBox = new THREE.Box3();
+
+  async load(version: number, reader: ReaderHelper) {
+    this.operations.splice(0, this.operations.length);
+    this.bvh.clear();
+    this.dirtyRegion.makeEmpty();
+    let numOperations = await reader.readU32();
+    for (let i = 0; i < numOperations; ++i) {
+      let op = await loadOperation(version, i, reader);
+      let bbox = this._tmpBBox;
+      getOperationWorldBounds(op, bbox);
+      this.operations.push(op);
+      this.dirtyRegion.union(bbox);
+      this.operations.push(op);
+      this.bvh.insert(op);
+    }
+  }
+
+  async save(version: number, writer: WritableStreamDefaultWriter<BufferSource>) {
+    let countBuffer = new Uint8Array(4);
+    (new DataView(countBuffer.buffer)).setUint32(0, this.operations.length, true);
+    writer.write(countBuffer);
+    for (let operation of this.operations) {
+      await saveOperation(version, operation, writer);
+    }
+  }
 
   insertEllipsoid(
     origin: THREE.Vector3,
@@ -120,6 +146,162 @@ export type OperationShape = {
   lenX: number,
   radius: number,
 };
+
+async function loadOperation(version: number, index: number, reader: ReaderHelper): Promise<Operation> {
+  let combinedType = await reader.readU8();
+  let combinedType2: Operation["combinedType"];
+  switch (combinedType) {
+    case 0:
+      combinedType2 = "Add";
+      break;
+    case 1:
+      combinedType2 = "Subtract";
+      break;
+    case 2:
+      combinedType2 = "Paint";
+      break;
+    default:
+      throw new Error("Invalid combined type");
+  }
+  let origin = new THREE.Vector3().set(
+    await reader.readF32(),
+    await reader.readF32(),
+    await reader.readF32(),
+  );
+  let orientation = new THREE.Quaternion().set(
+    await reader.readF32(),
+    await reader.readF32(),
+    await reader.readF32(),
+    await reader.readF32(),
+  );
+  let operationShape = await loadOperationShape(version, reader);
+  let colour: THREE.Color | undefined = undefined;
+  if (combinedType2 == "Paint") {
+    colour = new THREE.Color().setRGB(
+      Math.round((await reader.readU8()) / 256.0),
+      Math.round((await reader.readU8()) / 256.0),
+      Math.round((await reader.readU8()) / 256.0),
+    );
+  } else {
+    colour = undefined;
+  }
+  return {
+    index,
+    combinedType: combinedType2,
+    origin,
+    orientation,
+    operationShape,
+    colour,
+  };
+}
+
+async function loadOperationShape(version: number, reader: ReaderHelper): Promise<OperationShape> {
+  let type = await reader.readU8();
+  let type2: OperationShape["type"];
+  switch (type) {
+    case 0: {
+      type2 = "Ellipsoid";
+      let radius = new THREE.Vector3().set(
+        await reader.readF32(),
+        await reader.readF32(),
+        await reader.readF32(),
+      );
+      return {
+        type: type2,
+        radius,
+      };
+    }
+    case 1: {
+      type2 = "Box";
+      let len = new THREE.Vector3().set(
+        await reader.readF32(),
+        await reader.readF32(),
+        await reader.readF32(),
+      );
+      return {
+        type: type2,
+        len,
+      };
+    }
+    case 2: {
+      type2 = "Capsule";
+      let lenX = await reader.readF32();
+      let radius = await reader.readF32();
+      return {
+        type: type2,
+        lenX,
+        radius,
+      };
+    }
+    default:
+      throw new Error("Invalid type");
+  }
+}
+
+let _saveOperation_buffer = new Uint8Array(29);
+let _saveOperation_dataView = new DataView(_saveOperation_buffer.buffer);
+async function saveOperation(version: number, operation: Operation, writer: WritableStreamDefaultWriter<BufferSource>) {
+  let buffer = _saveOperation_buffer;
+  let dataView = _saveOperation_dataView;
+  switch (operation.combinedType) {
+    case "Add":
+      dataView.setUint8(0, 0);
+      break;
+    case "Subtract":
+      dataView.setUint8(0, 1);
+      break;
+    case "Paint":
+      dataView.setUint8(0, 2);
+      break;
+  }
+  dataView.setFloat32(1, operation.origin.x, true);
+  dataView.setFloat32(5, operation.origin.y, true);
+  dataView.setFloat32(9, operation.origin.z, true);
+  dataView.setFloat32(12+1, operation.orientation.x, true);
+  dataView.setFloat32(17, operation.orientation.y, true);
+  dataView.setFloat32(21, operation.orientation.z, true);
+  dataView.setFloat32(25, operation.orientation.w, true);
+  writer.write(buffer.subarray(0, 29));
+  saveOperationShape(version, operation.operationShape, writer);
+  if (operation.combinedType == "Paint") {
+    let red = Math.floor((operation.colour?.r ?? 1) * 255);
+    let green = Math.floor((operation.colour?.g ?? 1) * 255);
+    let blue = Math.floor((operation.colour?.b ?? 1) * 255);
+    dataView.setUint8(0, red);
+    dataView.setUint8(1, green);
+    dataView.setUint8(2, blue);
+    writer.write(buffer.subarray(3));
+  }
+}
+
+let _saveOperationShape_buffer = new Uint8Array(1+12);
+let _saveOperationShape_dataView = new DataView(_saveOperationShape_buffer.buffer);
+async function saveOperationShape(version: number, shape: OperationShape, writer: WritableStreamDefaultWriter<BufferSource>) {
+  let buffer = _saveOperationShape_buffer;
+  let dataView = _saveOperationShape_dataView;
+  switch (shape.type) {
+    case "Ellipsoid":
+      dataView.setUint8(0, 0);
+      dataView.setFloat32(1, shape.radius.x, true);
+      dataView.setFloat32(5, shape.radius.y, true);
+      dataView.setFloat32(9, shape.radius.z, true);
+      await writer.write(buffer.subarray(0, 1+12));
+      break;
+    case "Box":
+      dataView.setUint8(0, 1);
+      dataView.setFloat32(1, shape.len.x, true);
+      dataView.setFloat32(5, shape.len.y, true);
+      dataView.setFloat32(9, shape.len.z, true);
+      await writer.write(buffer.subarray(0, 1+12));
+      break;
+    case "Capsule":
+      dataView.setUint8(0, 2);
+      dataView.setFloat32(1, shape.lenX, true);
+      dataView.setFloat32(5, shape.radius, true);
+      await writer.write(buffer.subarray(0, 9));
+      break;
+  }
+}
 
 let _operationEvalSDF_pt = new THREE.Vector3();
 let _operationEvalSDF_q = new THREE.Quaternion();
@@ -338,6 +520,11 @@ export class OperationBVH {
     for (const op of initialOps) {
       this.insert(op);
     }
+  }
+
+  clear() {
+    this.root = null;
+    this.nodeMap.clear();
   }
 
   insert(op: Operation) {
