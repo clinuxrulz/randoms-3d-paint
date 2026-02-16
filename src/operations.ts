@@ -7,6 +7,7 @@ export class Operations {
   bvh: OperationBVH = new OperationBVH();
   dirtyRegion: THREE.Box3 = new THREE.Box3();
   combineMode: "Add" | "Subtract" | "Paint" = "Add";
+  colour = new THREE.Color().setRGB(1,1,1);
 
   private _tmpBBox = new THREE.Box3();
 
@@ -19,7 +20,6 @@ export class Operations {
       let op = await loadOperation(version, i, reader);
       let bbox = this._tmpBBox;
       getOperationWorldBounds(op, bbox);
-      this.operations.push(op);
       this.dirtyRegion.union(bbox);
       this.operations.push(op);
       this.bvh.insert(op);
@@ -29,7 +29,7 @@ export class Operations {
   async save(version: number, writer: WritableStreamDefaultWriter<BufferSource>) {
     let countBuffer = new Uint8Array(4);
     (new DataView(countBuffer.buffer)).setUint32(0, this.operations.length, true);
-    writer.write(countBuffer);
+    await writer.write(countBuffer);
     for (let operation of this.operations) {
       await saveOperation(version, operation, writer);
     }
@@ -50,6 +50,9 @@ export class Operations {
         radius: new THREE.Vector3().copy(radius),
       },
     };
+    if (this.combineMode == "Paint") {
+      op.colour = new THREE.Color().copy(this.colour);
+    }
     let bbox = this._tmpBBox;
     getOperationWorldBounds(op, bbox);
     this.dirtyRegion.union(bbox);
@@ -72,6 +75,9 @@ export class Operations {
         len: new THREE.Vector3().copy(len),
       },
     };
+    if (this.combineMode == "Paint") {
+      op.colour = new THREE.Color().copy(this.colour);
+    }
     let bbox = this._tmpBBox;
     getOperationWorldBounds(op, bbox);
     this.dirtyRegion.union(bbox);
@@ -96,6 +102,9 @@ export class Operations {
         radius,
       },
     };
+    if (this.combineMode == "Paint") {
+      op.colour = new THREE.Color().copy(this.colour);
+    }
     let bbox = this._tmpBBox;
     getOperationWorldBounds(op, bbox);
     this.dirtyRegion.union(bbox);
@@ -103,24 +112,63 @@ export class Operations {
     this.bvh.insert(op);
   }
 
+  insertCapsulePointToPoint(
+    pt1: THREE.Vector3,
+    pt2: THREE.Vector3,
+    radius: number,
+  ): void {
+    let lenX = pt1.distanceTo(pt2);
+    let origin = pt1;
+    let u = new THREE.Vector3().copy(pt2).sub(pt1).normalize();
+    let ax = Math.abs(u.x);
+    let ay = Math.abs(u.y);
+    let az = Math.abs(u.z);
+    let v: THREE.Vector3;
+    {
+      let w: THREE.Vector3;
+      if (ax <= ay && ax <= az) {
+        w = new THREE.Vector3(1.0, 0.0, 0.0);
+      } else if (ay <= ax && ay <= az) {
+        w = new THREE.Vector3(0.0, 1.0, 0.0);
+      } else {
+        w = new THREE.Vector3(0.0, 0.0, 1.0);
+      }
+      v = w.cross(u).normalize();
+    }
+    let w = new THREE.Vector3().copy(u).cross(v);
+    let m = new THREE.Matrix4().makeBasis(u, v, w);
+    let orientation = new THREE.Quaternion().setFromRotationMatrix(m);
+    this.insertCapsule(
+      origin,
+      orientation,
+      lenX,
+      radius,
+    );
+  }
+
   updateBrickMap(brickMap: BrickMap): void {
     if (this.dirtyRegion.isEmpty()) {
       return;
     }
+    /*
     let minXIdx = Math.floor(this.dirtyRegion.min.x / 10.0) + 512;
     let minYIdx = Math.floor(this.dirtyRegion.min.y / 10.0) + 512;
     let minZIdx = Math.floor(this.dirtyRegion.min.z / 10.0) + 512;
     let maxXIdx = Math.ceil(this.dirtyRegion.max.x / 10.0) + 512;
     let maxYIdx = Math.ceil(this.dirtyRegion.max.y / 10.0) + 512;
     let maxZIdx = Math.ceil(this.dirtyRegion.max.z / 10.0) + 512;
+    */
     this.bvh.updateBrickMap(
       brickMap,
+      this.dirtyRegion,
+      /*
       minXIdx,
       minYIdx,
       minZIdx,
       maxXIdx,
       maxYIdx,
       maxZIdx,
+      */
     );
     this.dirtyRegion.makeEmpty();
   }
@@ -178,9 +226,9 @@ async function loadOperation(version: number, index: number, reader: ReaderHelpe
   let colour: THREE.Color | undefined = undefined;
   if (combinedType2 == "Paint") {
     colour = new THREE.Color().setRGB(
-      Math.round((await reader.readU8()) / 256.0),
-      Math.round((await reader.readU8()) / 256.0),
-      Math.round((await reader.readU8()) / 256.0),
+      (await reader.readU8()) / 255.0,
+      (await reader.readU8()) / 255.0,
+      (await reader.readU8()) / 255.0,
     );
   } else {
     colour = undefined;
@@ -261,8 +309,8 @@ async function saveOperation(version: number, operation: Operation, writer: Writ
   dataView.setFloat32(17, operation.orientation.y, true);
   dataView.setFloat32(21, operation.orientation.z, true);
   dataView.setFloat32(25, operation.orientation.w, true);
-  writer.write(buffer.subarray(0, 29));
-  saveOperationShape(version, operation.operationShape, writer);
+  await writer.write(buffer.subarray(0, 29));
+  await saveOperationShape(version, operation.operationShape, writer);
   if (operation.combinedType == "Paint") {
     let red = Math.floor((operation.colour?.r ?? 1) * 255);
     let green = Math.floor((operation.colour?.g ?? 1) * 255);
@@ -270,7 +318,7 @@ async function saveOperation(version: number, operation: Operation, writer: Writ
     dataView.setUint8(0, red);
     dataView.setUint8(1, green);
     dataView.setUint8(2, blue);
-    writer.write(buffer.subarray(3));
+    await writer.write(buffer.subarray(0, 3));
   }
 }
 
@@ -349,8 +397,10 @@ function boxSDF(len: THREE.Vector3, pt: THREE.Vector3): number {
 
 let _capsuleSDF_pt2 = new THREE.Vector3();
 function capsuleSDF(lenX: number, radius: number, pt: THREE.Vector3): number {
-  let pt2 = _capsuleSDF_pt2.copy(pt);
-  pt2.x = Math.max(0.0, Math.min(lenX, pt2.x));
+  let pt2 = _capsuleSDF_pt2;
+  pt2.x = Math.max(0.0, Math.min(lenX, pt.x));
+  pt2.y = 0.0;
+  pt2.z = 0.0;
   return pt.distanceTo(pt2) - radius;
 }
 
@@ -632,9 +682,118 @@ export class OperationBVH {
     return 2 * (size.x * size.y + size.y * size.z + size.z * size.x);
   }
 
+
+  private _chunkAABB = new THREE.Box3();
+  private _pt = new THREE.Vector3();
+  private _ptLocal = new THREE.Vector3();
+  updateBrickMap(brickMap: BrickMap, dirtyRegion: THREE.Box3): void {
+    if (dirtyRegion.isEmpty()) {
+      return;
+    }
+    let _chunkAABB = this._chunkAABB;
+    let _pt = this._pt;
+    let _ptLocal = this._ptLocal;
+    const minXIdx = Math.floor(dirtyRegion.min.x / 10.0) + 512;
+    const minYIdx = Math.floor(dirtyRegion.min.y / 10.0) + 512;
+    const minZIdx = Math.floor(dirtyRegion.min.z / 10.0) + 512;
+    const maxXIdx = Math.ceil(dirtyRegion.max.x / 10.0) + 512;
+    const maxYIdx = Math.ceil(dirtyRegion.max.y / 10.0) + 512;
+    const maxZIdx = Math.ceil(dirtyRegion.max.z / 10.0) + 512;
+    const CHUNK_SIZE = 8;
+    const chunkOps: Operation[] = [];
+    const invRotCache = new Map<number, THREE.Quaternion>();
+    const sqrt3 = Math.sqrt(3.0);
+    for (let cz = minZIdx; cz < maxZIdx; cz += CHUNK_SIZE) {
+      for (let cy = minYIdx; cy < maxYIdx; cy += CHUNK_SIZE) {
+        for (let cx = minXIdx; cx < maxXIdx; cx += CHUNK_SIZE) {
+          const cMaxX = Math.min(cx + CHUNK_SIZE, maxXIdx);
+          const cMaxY = Math.min(cy + CHUNK_SIZE, maxYIdx);
+          const cMaxZ = Math.min(cz + CHUNK_SIZE, maxZIdx);
+          _chunkAABB.min.set((cx - 512) * 10.0, (cy - 512) * 10.0, (cz - 512) * 10.0);
+          _chunkAABB.max.set((cMaxX - 512) * 10.0, (cMaxY - 512) * 10.0, (cMaxZ - 512) * 10.0);
+          chunkOps.length = 0;
+          this.query(_chunkAABB, chunkOps);
+          chunkOps.sort((a, b) => a.index - b.index);
+          if (chunkOps.length === 0) {
+            for (let k = cz; k < cMaxZ; ++k) {
+              for (let j = cy; j < cMaxY; ++j) {
+                for (let i = cx; i < cMaxX; ++i) {
+                  brickMap.set(i, j, k, 0);
+                }
+              }
+            }
+            continue;
+          }
+          for (const op of chunkOps) {
+            if (!invRotCache.has(op.index)) {
+              invRotCache.set(op.index, op.orientation.clone().conjugate());
+            }
+          }
+          for (let k = cz; k < cMaxZ; ++k) {
+            const atMinZ = (k - 512) * 10.0;
+            for (let j = cy; j < cMaxY; ++j) {
+              const atMinY = (j - 512) * 10.0;
+              for (let i = cx; i < cMaxX; ++i) {
+                const atMinX = (i - 512) * 10.0;
+                _pt.set(atMinX, atMinY, atMinZ);
+                let dist = Number.POSITIVE_INFINITY;
+                let colour: THREE.Color | undefined = undefined;
+                for (let op of chunkOps) {
+                  const qInv = invRotCache.get(op.index)!; _ptLocal.copy(_pt).sub(op.origin).applyQuaternion(qInv);
+                  let sdf = 0;
+                  switch (op.operationShape.type) {
+                    case "Ellipsoid":
+                      sdf = ellipsoidSDF(op.operationShape.radius, _ptLocal);
+                      break;
+                    case "Box":
+                      sdf = boxSDF(op.operationShape.len, _ptLocal);
+                      break;
+                    case "Capsule":
+                      sdf = capsuleSDF(op.operationShape.lenX, op.operationShape.radius, _ptLocal);
+                      break;
+                  }
+                  switch (op.combinedType) {
+                    case "Add":
+                      dist = Math.min(dist, sdf);
+                      break;
+                    case "Subtract":
+                      dist = Math.max(dist, -sdf);
+                      break;
+                    case "Paint":
+                      if (sdf <= 0.0) {
+                        colour = op.colour ?? colour; 
+                      }
+                      break;
+                  }
+                }
+                if (Number.isFinite(dist)) {
+                  dist /= 10.0 * sqrt3;
+                  let a = Math.max(1, Math.min(255, 128 - Math.floor(127.0 * dist)));
+                  brickMap.set(i, j, k, a);
+                } else {
+                  brickMap.set(i, j, k, 0);
+                }
+                if (colour != undefined) {
+                  brickMap.paint(
+                    i, j, k,
+                    Math.floor(colour.r * 255.0),
+                    Math.floor(colour.g * 255.0),
+                    Math.floor(colour.b * 255.0),
+                  );
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+    dirtyRegion.makeEmpty();
+  }
+
+
   private _updateBrickMap_aabb = new THREE.Box3();
   private _updateBrickMap_pt = new THREE.Vector3();
-  updateBrickMap(
+  updateBrickMap2(
     brickMap: BrickMap,
     minXIdx: number,
     minYIdx: number,
@@ -651,17 +810,21 @@ export class OperationBVH {
     let maxX = (maxXIdx - 512) * 10.0;
     let maxY = (maxYIdx - 512) * 10.0;
     let maxZ = (maxZIdx - 512) * 10.0;
-    aabb.min.set(minX, minY, minZ);
-    aabb.max.set(maxX, maxY, maxZ);
-    this.query(aabb, operations);
-    operations.sort((a, b) => a.index - b.index);
+    //aabb.min.set(minX, minY, minZ);
+    //aabb.max.set(maxX, maxY, maxZ);
+    //this.query(aabb, operations);
+    //operations.sort((a, b) => a.index - b.index);
     let pt = this._updateBrickMap_pt;
     let sqrt3 = Math.sqrt(3.0);
     for (let i = minZIdx, atMinZ = minZ; i <= maxZIdx; ++i, atMinZ += 10.0) {
       for (let j = minYIdx, atMinY = minY; j <= maxYIdx; ++j, atMinY += 10.0) {
         for (let k = minXIdx, atMinX = minX; k <= maxXIdx; ++k, atMinX += 10.0) {
-          operations.sort((a, b) => a.index - b.index);
           pt.set(atMinX, atMinY, atMinZ);
+          aabb.min.set(pt.x - 10.0, pt.y - 10.0, pt.z - 10.0);
+          aabb.max.set(pt.x + 10.0, pt.y + 10.0, pt.z + 10.0);
+          operations.splice(0, operations.length);
+          this.query(aabb, operations);
+          operations.sort((a, b) => a.index - b.index);
           let dist = Number.POSITIVE_INFINITY;
           let colour: THREE.Color | undefined = undefined;
           for (let operation of operations) {

@@ -18,6 +18,7 @@ import { march, pointsAndTriangleIndicesToGeometry } from './marching_cubes/marc
 import { UVUnwrapper } from 'xatlas-three';
 import FileSaver from "file-saver";
 import { renderTargetToDataURL } from './util';
+import { Operations } from './operations';
 
 const defaultPalette = [
   // Grayscale (White to Black)
@@ -74,21 +75,34 @@ const App: Component = () => {
     }
     return state.palette.find(({ id }) => id === colourId)?.colour;
   });
+  let operations = new Operations();
   let brickMap = new BrickMap();
+  createComputed(on(
+    currentColour,
+    (colour) => {
+      if (colour == undefined) {
+        return;
+      }
+      operations.colour.copy(colour);
+    }
+  ));
   let [ rendererViewController, setRendererViewController, ] = createSignal<RendererViewController>();
   let setMode = (mode: { new(modeParams: ModeParams): Mode, }) => setState("mkMode", () => mode);
   let modeParams: ModeParams = {
     endMode: () => setMode(IdleMode),
+    operations,
     brickMap,
     canvasSize: () => rendererViewController()?.canvasSize(),
     pointerPos: () => state.pointerPos,
     pointerDown: () => state.pointerDown,
     currentColour,
     updateSdf: () => {
+      operations.updateBrickMap(brickMap);
       let controller = rendererViewController();
       controller?.onBrickMapChanged();
     },
     updatePaint: () => {
+      operations.updateBrickMap(brickMap);
       let controller = rendererViewController();
       controller?.onBrickMapPaintChanged();
     },
@@ -239,15 +253,15 @@ const App: Component = () => {
     controller?.scaleTransform();
   };
   let loadSnapshot = async () => {
-    await loadScene("quicksave.dat", brickMap);
+    await loadScene("quicksave.dat", operations);
     modeParams.updateSdf();
     modeParams.updatePaint();
   };
   let saveSnapshot = async () => {
-    await saveScene("quicksave.dat", brickMap);
+    await saveScene("quicksave.dat", operations);
   };
   let load = async (file: File) => {
-    await uploadScene(file, brickMap);
+    await uploadScene(file, operations);
     modeParams.updateSdf();
     modeParams.updatePaint();
   };
@@ -263,7 +277,7 @@ const App: Component = () => {
     if (!filename.toLowerCase().endsWith(".randoms-3d-paint")) {
       filename += ".randoms-3d-paint";
     }
-    await downloadScene(filename, brickMap);
+    await downloadScene(filename, operations);
   };
   let march_ = () => {
     let pointsAndTriangleIndices = march({

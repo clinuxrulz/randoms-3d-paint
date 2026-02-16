@@ -1,9 +1,11 @@
 import { Accessor } from "solid-js";
 import * as THREE from "three";
 import { BrickMap } from "../BrickMap";
+import { Operations } from "../operations";
 
 export type ModeParams = {
   endMode: () => void,
+  operations: Operations,
   brickMap: BrickMap,
   canvasSize: Accessor<THREE.Vector2 | undefined>,
   pointerPos: Accessor<THREE.Vector2 | undefined>,

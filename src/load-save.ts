@@ -1,5 +1,6 @@
 import { BrickMap } from "./BrickMap";
 import FileSaver from "file-saver";
+import { Operations } from "./operations";
 
 export class ReaderHelper {
   private reader: ReadableStreamDefaultReader<Uint8Array>;
@@ -59,16 +60,16 @@ export class ReaderHelper {
   }
 }
 
-async function loadFromReader(version: number, reader: ReadableStreamDefaultReader<Uint8Array>, brickMap: BrickMap) {
+async function loadFromReader(version: number, reader: ReadableStreamDefaultReader<Uint8Array>, operations: Operations) {
   let reader2 = new ReaderHelper(reader);
-  await brickMap.load(version, reader2);
+  await operations.load(version, reader2);
 }
 
-async function saveToWriter(version: number, writer: WritableStreamDefaultWriter<BufferSource>, brikMap: BrickMap) {
-  await brikMap.save(version, writer);
+async function saveToWriter(version: number, writer: WritableStreamDefaultWriter<BufferSource>, operations: Operations) {
+  await operations.save(version, writer);
 }
 
-async function loadFromReadable(readable: ReadableStream<Uint8Array>, brickMap: BrickMap) {
+async function loadFromReadable(readable: ReadableStream<Uint8Array>, operations: Operations) {
   let reader = readable.getReader();
   let version: number;
   let leftOver: Uint8Array | undefined;
@@ -101,10 +102,10 @@ async function loadFromReadable(readable: ReadableStream<Uint8Array>, brickMap: 
     }
   }).pipeThrough(new DecompressionStream("gzip"));
   let decompressReader = decompressedStream.getReader();
-  await loadFromReader(version, decompressReader, brickMap);
+  await loadFromReader(version, decompressReader, operations);
 }
 
-async function saveToWritable(writable: WritableStream<Uint8Array>, brickMap: BrickMap) {
+async function saveToWritable(writable: WritableStream<Uint8Array>, operations: Operations) {
   let version = 2;
   let versionBuffer = new Uint8Array([version & 0xFF, (version >> 8) & 0xFF]);
   {
@@ -115,29 +116,29 @@ async function saveToWritable(writable: WritableStream<Uint8Array>, brickMap: Br
   let cs = new CompressionStream("gzip");
   let csWriter = cs.writable.getWriter();
   let savePromise = (async () => {
-    await saveToWriter(version, csWriter, brickMap);
+    await saveToWriter(version, csWriter, operations);
     await csWriter.close();
   })();
   await cs.readable.pipeTo(writable);
   await savePromise;
 }
 
-export async function uploadScene(file: File, brickMap: BrickMap) {
+export async function uploadScene(file: File, operations: Operations) {
   let readable = await file.stream();
-  await loadFromReadable(readable, brickMap);
+  await loadFromReadable(readable, operations);
 }
 
-export async function downloadScene(filename: string, brickMap: BrickMap) {
+export async function downloadScene(filename: string, operations: Operations) {
   let {
     writable,
     result: blob,
   } = createWritableStreamToBlob("application/octet-stream");
-  await saveToWritable(writable, brickMap);
+  await saveToWritable(writable, operations);
   let blob2 = await blob;
   FileSaver.saveAs(blob2, filename);
 }
 
-export async function loadScene(fileName: string, brickMap: BrickMap): Promise<boolean> {
+export async function loadScene(fileName: string, operations: Operations): Promise<boolean> {
   let dir = await navigator.storage.getDirectory();
   let fileHandle: FileSystemFileHandle;
   try {
@@ -152,18 +153,18 @@ export async function loadScene(fileName: string, brickMap: BrickMap): Promise<b
   }
   let file = await fileHandle.getFile();
   let readable = await file.stream();
-  await loadFromReadable(readable, brickMap);
+  await loadFromReadable(readable, operations);
   // stats
   console.log("File size:", file.size);
   //
   return true;
 }
 
-export async function saveScene(fileName: string, brickMap: BrickMap) {
+export async function saveScene(fileName: string, operations: Operations) {
   let dir = await navigator.storage.getDirectory();
   let fileHandle = await dir.getFileHandle(fileName, { create: true, });
   let writable = await fileHandle.createWritable();
-  await saveToWritable(writable, brickMap);
+  await saveToWritable(writable, operations);
   // stats
   let file = await fileHandle.getFile();
   console.log("File size:", file.size);
