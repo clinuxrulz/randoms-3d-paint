@@ -37,9 +37,19 @@ const RendererView: Component<{
   let [ orbitControls, setOrbitControls, ] = createSignal<OrbitControls>();
   let [ transformControls, setTransformControls, ] = createSignal<TransformControls>();
   let scene = new THREE.Scene();
-  let light = new THREE.DirectionalLight();
-  light.position.set(1.0, 1.0, 1.0);
-  scene.add(light);
+  {
+    const hemiLight = new THREE.HemisphereLight(0xffffff, 0x444444, 0.8);
+    scene.add(hemiLight);
+    const keyLight = new THREE.DirectionalLight(0xffffff, 1.2);
+    keyLight.position.set(1, 1, 1);
+    scene.add(keyLight);
+    const fillLight = new THREE.DirectionalLight(0xffffff, 0.5);
+    fillLight.position.set(-1, 0, 1);
+    scene.add(fillLight);
+    const rimLight = new THREE.DirectionalLight(0xffffff, 0.6);
+    rimLight.position.set(0, -1, -1);
+    scene.add(rimLight);
+  }
   let brickMapShaderCode = props.brickMap.writeShaderCode();
   let fragmentShaderCode = `
 precision highp float;
@@ -121,6 +131,21 @@ vec3 normal(vec3 p) {
     ));
 }
 
+vec3 calculateLighting(vec3 pos, vec3 normal, vec3 viewDir, vec3 baseColor) {
+    float hemi = 0.5 + 0.5 * normal.y;
+    vec3 ambient = mix(vec3(0.1, 0.1, 0.2), vec3(0.2, 0.15, 0.1), hemi);
+    vec3 keyDir = normalize(vec3(1.0, 1.0, 1.0));
+    vec3 fillDir = normalize(vec3(-1.0, 0.0, 1.0));
+    vec3 rimDir = normalize(vec3(0.0, -1.0, -1.0));
+    float key = max(dot(normal, keyDir), 0.0);
+    float fill = max(dot(normal, fillDir), 0.0) * 0.4;
+    float rim = max(dot(normal, rimDir), 0.0) * 0.3;
+    vec3 refl = reflect(-keyDir, normal);
+    float spec = pow(max(dot(refl, viewDir), 0.0), 32.0) * 0.5;
+    vec3 lighting = (ambient + (key + fill + rim) * 0.8) * baseColor + spec;
+    return lighting;
+}
+
 void main(void) {
   float fl = uFocalLength;
   vec2 uv = gl_FragCoord.xy / resolution;
@@ -145,7 +170,8 @@ void main(void) {
   }
   float s = 0.8*dot(n,normalize(vec3(1,1,1))) + 0.2;
   vec4 c = colour(p);
-  c = vec4(c.rgb * s, c.a);
+  vec3 c2 = calculateLighting(p, n, rd, c.rgb);
+  c = vec4(c2, c.a);
   gl_FragColor = c;
   vec4 clipPos = uCameraProjectionMatrix * uCameraViewMatrix * vec4(p, 1.0);
   float ndcDepth = clipPos.z / clipPos.w;
