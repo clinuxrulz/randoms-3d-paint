@@ -8,6 +8,7 @@ export class Operations {
   dirtyRegion: THREE.Box3 = new THREE.Box3();
   combineMode: "Add" | "Subtract" | "Paint" = "Add";
   colour = new THREE.Color().setRGB(1,1,1);
+  softness = 0.0;
   dirtyTrackingEnabled = true;
 
   private _tmpBBox = new THREE.Box3();
@@ -41,18 +42,29 @@ export class Operations {
     orientation: THREE.Quaternion,
     radius: THREE.Vector3,
   ): void {
-    let op: Operation = {
+    let baseOp: BaseOperation = {
       index: this.operations.length,
-      combinedType: this.combineMode,
       origin: new THREE.Vector3().copy(origin),
       orientation: new THREE.Quaternion().copy(orientation),
       operationShape: {
         type: "Ellipsoid",
         radius: new THREE.Vector3().copy(radius),
       },
+      softness: this.softness,
     };
+    let op: Operation;
     if (this.combineMode == "Paint") {
-      op.colour = new THREE.Color().copy(this.colour);
+      op = {
+        ...baseOp,
+        combinedType: this.combineMode,
+        colour: new THREE.Color().copy(this.colour),
+        opacity: 1.0,
+      };
+    } else {
+      op = {
+        ...baseOp,
+        combinedType: this.combineMode,
+      };
     }
     let bbox = this._tmpBBox;
     getOperationWorldBounds(op, bbox);
@@ -68,18 +80,29 @@ export class Operations {
     orientation: THREE.Quaternion,
     len: THREE.Vector3,
   ): void {
-    let op: Operation = {
+    let baseOp: BaseOperation = {
       index: this.operations.length,
-      combinedType: this.combineMode,
       origin: new THREE.Vector3().copy(origin),
       orientation: new THREE.Quaternion().copy(orientation),
       operationShape: {
         type: "Box",
         len: new THREE.Vector3().copy(len),
       },
+      softness: this.softness,
     };
+    let op: Operation;
     if (this.combineMode == "Paint") {
-      op.colour = new THREE.Color().copy(this.colour);
+      op = {
+        ...baseOp,
+        combinedType: this.combineMode,
+        colour: new THREE.Color().copy(this.colour),
+        opacity: 1.0,
+      };
+    } else {
+      op = {
+        ...baseOp,
+        combinedType: this.combineMode,
+      };
     }
     let bbox = this._tmpBBox;
     getOperationWorldBounds(op, bbox);
@@ -96,9 +119,8 @@ export class Operations {
     lenX: number,
     radius: number,
   ): void {
-    let op: Operation = {
+    let baseOp: BaseOperation = {
       index: this.operations.length,
-      combinedType: this.combineMode,
       origin: new THREE.Vector3().copy(origin),
       orientation: new THREE.Quaternion().copy(orientation),
       operationShape: {
@@ -106,9 +128,21 @@ export class Operations {
         lenX,
         radius,
       },
+      softness: this.softness,
     };
+    let op: Operation;
     if (this.combineMode == "Paint") {
-      op.colour = new THREE.Color().copy(this.colour);
+      op = {
+        ...baseOp,
+        combinedType: this.combineMode,
+        colour: new THREE.Color().copy(this.colour),
+        opacity: 1.0,
+      };
+    } else {
+      op = {
+        ...baseOp,
+        combinedType: this.combineMode,
+      };
     }
     let bbox = this._tmpBBox;
     getOperationWorldBounds(op, bbox);
@@ -181,14 +215,18 @@ export class Operations {
   }
 }
 
-export type Operation = {
-  index: number,
-  combinedType: "Add" | "Subtract" | "Paint",
-  origin: THREE.Vector3,
-  orientation: THREE.Quaternion,
-  operationShape: OperationShape,
-  colour?: THREE.Color,
+type BaseOperation = {
+  index: number;
+  origin: THREE.Vector3;
+  orientation: THREE.Quaternion;
+  operationShape: OperationShape;
+  softness: number;
 };
+
+export type Operation = BaseOperation & (
+  | { combinedType: "Add" | "Subtract" }
+  | { combinedType: "Paint"; colour: THREE.Color; opacity: number }
+);
 
 export type OperationShape = {
   type: "Ellipsoid",
@@ -230,24 +268,35 @@ async function loadOperation(version: number, index: number, reader: ReaderHelpe
     await reader.readF32(),
   );
   let operationShape = await loadOperationShape(version, reader);
-  let colour: THREE.Color | undefined = undefined;
+  let softness = await reader.readF32();
+  let baseOperation: BaseOperation = {
+    index,
+    origin,
+    orientation,
+    operationShape,
+    softness,
+  };
+  let operation: Operation;
   if (combinedType2 == "Paint") {
-    colour = new THREE.Color().setRGB(
+    let colour = new THREE.Color().setRGB(
       (await reader.readU8()) / 255.0,
       (await reader.readU8()) / 255.0,
       (await reader.readU8()) / 255.0,
     );
+    let opacity = (await reader.readU8()) / 255.0;
+    operation = {
+      ...baseOperation,
+      combinedType: combinedType2,
+      colour,
+      opacity,
+    };
   } else {
-    colour = undefined;
+    operation = {
+      ...baseOperation,
+      combinedType: combinedType2,
+    };
   }
-  return {
-    index,
-    combinedType: combinedType2,
-    origin,
-    orientation,
-    operationShape,
-    colour,
-  };
+  return operation;
 }
 
 async function loadOperationShape(version: number, reader: ReaderHelper): Promise<OperationShape> {
@@ -318,14 +367,18 @@ async function saveOperation(version: number, operation: Operation, writer: Writ
   dataView.setFloat32(25, operation.orientation.w, true);
   await writer.write(buffer.subarray(0, 29));
   await saveOperationShape(version, operation.operationShape, writer);
+  dataView.setFloat32(0, operation.softness, true);
+  await writer.write(buffer.subarray(0, 4));
   if (operation.combinedType == "Paint") {
-    let red = Math.floor((operation.colour?.r ?? 1) * 255);
-    let green = Math.floor((operation.colour?.g ?? 1) * 255);
-    let blue = Math.floor((operation.colour?.b ?? 1) * 255);
+    let red = Math.max(0, Math.min(255, Math.round(operation.colour.r * 255)));
+    let green = Math.max(0, Math.min(255, Math.round(operation.colour.g * 255)));
+    let blue = Math.max(0, Math.min(255, Math.round(operation.colour.b * 255)));
+    let opacity = Math.max(0, Math.min(255, Math.round(operation.opacity * 255)));
     dataView.setUint8(0, red);
     dataView.setUint8(1, green);
     dataView.setUint8(2, blue);
-    await writer.write(buffer.subarray(0, 3));
+    dataView.setUint8(3, opacity);
+    await writer.write(buffer.subarray(0, 4));
   }
 }
 
