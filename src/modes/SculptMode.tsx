@@ -69,7 +69,9 @@ export class SculptMode implements Mode {
             if (state.softness == 0.0) {
               params.operations.dirtyTrackingEnabled = false;
             }
-            params.operations.insertEllipsoid(untrack(pointUnderRay2), new THREE.Quaternion(), new THREE.Vector3().addScalar(0.5 * state.brushSize * 10.0));
+            params.operations.softness = state.softness * state.brushSize * 10.0;
+            params.operations.insertEllipsoid(untrack(pointUnderRay2), new THREE.Quaternion(), new THREE.Vector3().addScalar(0.5 * (state.brushSize - 4.0*state.softness) * 10.0));
+            params.operations.softness = 0.0;
             if (state.softness == 0.0) {
               drawInBrickmap(params.brickMap, untrack(pointUnderRay2), state.isNegativeBrush, state.brushSize, 0.0);
               params.operations.dirtyTrackingEnabled = true;
@@ -91,7 +93,9 @@ export class SculptMode implements Mode {
                 if (state.softness == 0.0) {
                   params.operations.dirtyTrackingEnabled = false;
                 }
-                params.operations.insertCapsulePointToPoint(lastPt, pointUnderRay, 0.5 * state.brushSize * 10.0);
+                params.operations.softness = state.softness * state.brushSize * 10.0;
+                params.operations.insertCapsulePointToPoint(lastPt, pointUnderRay, 0.5 * (state.brushSize - 4.0*state.softness) * 10.0);
+                params.operations.softness = 0.0;
                 if (state.softness == 0.0) {
                   strokeInBrickmap(params.brickMap, lastPt, pointUnderRay, state.isNegativeBrush, state.brushSize, 0.0);
                   params.operations.dirtyTrackingEnabled = true;
@@ -177,7 +181,7 @@ export class SculptMode implements Mode {
             type="range"
             class="range"
             min="0"
-            max="1"
+            max="0.18"
             step="0.05"
             value={state.softness}
             onInput={(e) => {

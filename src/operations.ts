@@ -539,6 +539,7 @@ export function operationCornerPoints(
   let shape = operation.operationShape;
   let aabb = _operationCornerPoints_aabb;
   operationShapeBoundingBox(shape, aabb);
+  aabb.expandByScalar(operation.softness);
   out[0].set(aabb.min.x, aabb.min.y, aabb.min.z).applyQuaternion(operation.orientation).add(operation.origin);
   out[1].set(aabb.min.x, aabb.min.y, aabb.max.z).applyQuaternion(operation.orientation).add(operation.origin);
   out[2].set(aabb.min.x, aabb.max.y, aabb.min.z).applyQuaternion(operation.orientation).add(operation.origin);
@@ -742,7 +743,6 @@ export class OperationBVH {
     return 2 * (size.x * size.y + size.y * size.z + size.z * size.x);
   }
 
-
   private _chunkAABB = new THREE.Box3();
   private _pt = new THREE.Vector3();
   private _ptLocal = new THREE.Vector3();
@@ -814,10 +814,25 @@ export class OperationBVH {
                   }
                   switch (op.combinedType) {
                     case "Add":
-                      dist = Math.min(dist, sdf);
+                      if (op.softness == 0.0) {
+                        dist = Math.min(dist, sdf);
+                      } else {
+                        let k = op.softness * 4.0;
+                        let h = Math.max(k - Math.abs(dist - sdf), 0.0);
+                        dist = Math.min(dist, sdf) - h*h*0.25/k;
+                      }
                       break;
                     case "Subtract":
-                      dist = Math.max(dist, -sdf);
+                      if (op.softness == 0.0) {
+                        dist = Math.max(dist, -sdf);
+                      } else {
+                        // return -opSmoothUnion(a,-b,k);
+                        let a = sdf;
+                        let b = -dist;
+                        let k = op.softness * 4.0;
+                        let h = Math.max(k - Math.abs(a - b), 0.0);
+                        dist = -(Math.min(a, b) - h*h*0.25/k);
+                      }
                       break;
                     case "Paint":
                       if (sdf <= 0.0) {
@@ -848,81 +863,5 @@ export class OperationBVH {
       }
     }
     dirtyRegion.makeEmpty();
-  }
-
-
-  private _updateBrickMap_aabb = new THREE.Box3();
-  private _updateBrickMap_pt = new THREE.Vector3();
-  updateBrickMap2(
-    brickMap: BrickMap,
-    minXIdx: number,
-    minYIdx: number,
-    minZIdx: number,
-    maxXIdx: number,
-    maxYIdx: number,
-    maxZIdx: number
-  ) {
-    let operations: Operation[] = [];
-    let aabb = this._updateBrickMap_aabb;
-    let minX = (minXIdx - 512) * 10.0;
-    let minY = (minYIdx - 512) * 10.0;
-    let minZ = (minZIdx - 512) * 10.0;
-    let maxX = (maxXIdx - 512) * 10.0;
-    let maxY = (maxYIdx - 512) * 10.0;
-    let maxZ = (maxZIdx - 512) * 10.0;
-    //aabb.min.set(minX, minY, minZ);
-    //aabb.max.set(maxX, maxY, maxZ);
-    //this.query(aabb, operations);
-    //operations.sort((a, b) => a.index - b.index);
-    let pt = this._updateBrickMap_pt;
-    let sqrt3 = Math.sqrt(3.0);
-    for (let i = minZIdx, atMinZ = minZ; i <= maxZIdx; ++i, atMinZ += 10.0) {
-      for (let j = minYIdx, atMinY = minY; j <= maxYIdx; ++j, atMinY += 10.0) {
-        for (let k = minXIdx, atMinX = minX; k <= maxXIdx; ++k, atMinX += 10.0) {
-          pt.set(atMinX, atMinY, atMinZ);
-          aabb.min.set(pt.x - 10.0, pt.y - 10.0, pt.z - 10.0);
-          aabb.max.set(pt.x + 10.0, pt.y + 10.0, pt.z + 10.0);
-          operations.splice(0, operations.length);
-          this.query(aabb, operations);
-          operations.sort((a, b) => a.index - b.index);
-          let dist = Number.POSITIVE_INFINITY;
-          let colour: THREE.Color | undefined = undefined;
-          for (let operation of operations) {
-            let a = operationEvalSDF(operation, pt);
-            switch (operation.combinedType) {
-              case "Add":
-                dist = Math.min(dist, a);
-                break;
-              case "Subtract":
-                dist = Math.max(dist, -a);
-                break;
-              case "Paint":
-                if (a <= 0.0) {
-                  colour ??= operation.colour;
-                }
-                break;
-            }
-          }
-          if (Number.isFinite(dist)) {
-            dist /= 10.0 * sqrt3;
-            let a = Math.max(1, Math.min(255, 128 - Math.floor(127.0 * dist)));
-            brickMap.set(k, j, i, a);
-          } else {
-            brickMap.set(k, j, i, 0);
-          }
-          if (colour != undefined) {
-            let red = Math.floor(colour.r * 255.0);
-            let green = Math.floor(colour.g * 255.0);
-            let blue = Math.floor(colour.b * 255.0);
-            brickMap.paint(
-              k, j, i,
-              red,
-              green,
-              blue,
-            );
-          }
-        }
-      }
-    }
   }
 }
