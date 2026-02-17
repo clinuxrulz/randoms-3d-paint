@@ -743,6 +743,89 @@ export class OperationBVH {
     return 2 * (size.x * size.y + size.y * size.z + size.z * size.x);
   }
 
+  private _evalSDF_pt = new THREE.Vector3();
+  private _evalSDF_ptLocal = new THREE.Vector3();
+  private _evalSDF_chunkAabb = new THREE.Box3();
+  private _evalSDF_operations: Operation[] = [];
+  private _evalSDF_invRotCache = new Map<number, THREE.Quaternion>();
+  evalSDF_start(): void {
+    this._evalSDF_chunkAabb.makeEmpty();
+    this._evalSDF_operations = [];
+    this._evalSDF_invRotCache.clear();
+  }
+  evalSDF(x: number, y: number, z: number): number {
+    let pt = this._evalSDF_pt.set(x, y, z);
+    let chunkAabb = this._evalSDF_chunkAabb;
+    let chunkOps: Operation[];
+    if (chunkAabb.containsPoint(pt)) {
+      chunkOps = this._evalSDF_operations;
+    } else {
+      chunkAabb.min.copy(pt);
+      chunkAabb.max.copy(pt);
+      chunkAabb.expandByScalar(100.0);
+      this._evalSDF_operations.splice(0, this._evalSDF_operations.length);
+      this.query(chunkAabb, this._evalSDF_operations);
+      this._evalSDF_operations.sort((a, b) => a.index - b.index);
+      chunkOps = this._evalSDF_operations;
+    }
+    const invRotCache = this._evalSDF_invRotCache;
+    const sqrt3 = Math.sqrt(3.0);
+    for (const op of chunkOps) {
+      if (!invRotCache.has(op.index)) {
+        invRotCache.set(op.index, op.orientation.clone().conjugate());
+      }
+    }
+    if (chunkOps.length == 0) {
+      return 100.0;
+    }
+    let dist = Number.POSITIVE_INFINITY;
+    let ptLocal = this._evalSDF_ptLocal;
+    for (let op of chunkOps) {
+      const qInv = invRotCache.get(op.index)!; ptLocal.copy(pt).sub(op.origin).applyQuaternion(qInv);
+      let sdf = 0;
+      switch (op.operationShape.type) {
+        case "Ellipsoid":
+          sdf = ellipsoidSDF(op.operationShape.radius, ptLocal);
+          break;
+        case "Box":
+          sdf = boxSDF(op.operationShape.len, ptLocal);
+          break;
+        case "Capsule":
+          sdf = capsuleSDF(op.operationShape.lenX, op.operationShape.radius, ptLocal);
+          break;
+      }
+      switch (op.combinedType) {
+        case "Add":
+          if (op.softness == 0.0) {
+            dist = Math.min(dist, sdf);
+          } else {
+            let k = op.softness * 4.0;
+            let h = Math.max(k - Math.abs(dist - sdf), 0.0);
+            dist = Math.min(dist, sdf) - h*h*0.25/k;
+          }
+          break;
+        case "Subtract":
+          if (op.softness == 0.0) {
+            dist = Math.max(dist, -sdf);
+          } else {
+            // return -opSmoothUnion(a,-b,k);
+            let a = sdf;
+            let b = -dist;
+            let k = op.softness * 4.0;
+            let h = Math.max(k - Math.abs(a - b), 0.0);
+            dist = -(Math.min(a, b) - h*h*0.25/k);
+          }
+          break;
+        case "Paint":
+          break;
+      }
+    }
+    if (!Number.isFinite(dist)) {
+      return 100.0;
+    }
+    return dist;
+  }
+
   private _chunkAABB = new THREE.Box3();
   private _pt = new THREE.Vector3();
   private _ptLocal = new THREE.Vector3();

@@ -281,7 +281,7 @@ const App: Component = () => {
   };
   let march_ = () => {
     let pointsAndTriangleIndices = march({
-      sdf: (x: number, y: number, z: number) => (128.0 - brickMap.get(512 + x*10/2, 512 + y*10/2, 512 + z*10/2)) / 127.0,
+      sdf: (x: number, y: number, z: number) => operations.bvh.evalSDF(x*10*10/2, y*10*10/2, z*10*10/2) / 50.0,
       minX: -51*2,
       minY: -51*2,
       minZ: -51*2,
