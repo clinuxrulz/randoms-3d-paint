@@ -8,6 +8,7 @@ export class Operations {
   dirtyRegion: THREE.Box3 = new THREE.Box3();
   combineMode: "Add" | "Subtract" | "Paint" = "Add";
   colour = new THREE.Color().setRGB(1,1,1);
+  dirtyTrackingEnabled = true;
 
   private _tmpBBox = new THREE.Box3();
 
@@ -55,7 +56,9 @@ export class Operations {
     }
     let bbox = this._tmpBBox;
     getOperationWorldBounds(op, bbox);
-    this.dirtyRegion.union(bbox);
+    if (this.dirtyTrackingEnabled) {
+      this.dirtyRegion.union(bbox);
+    }
     this.operations.push(op);
     this.bvh.insert(op);
   }
@@ -80,7 +83,9 @@ export class Operations {
     }
     let bbox = this._tmpBBox;
     getOperationWorldBounds(op, bbox);
-    this.dirtyRegion.union(bbox);
+    if (this.dirtyTrackingEnabled) {
+      this.dirtyRegion.union(bbox);
+    }
     this.operations.push(op);
     this.bvh.insert(op);
   }
@@ -107,7 +112,9 @@ export class Operations {
     }
     let bbox = this._tmpBBox;
     getOperationWorldBounds(op, bbox);
-    this.dirtyRegion.union(bbox);
+    if (this.dirtyTrackingEnabled) {
+      this.dirtyRegion.union(bbox);
+    }
     this.operations.push(op);
     this.bvh.insert(op);
   }

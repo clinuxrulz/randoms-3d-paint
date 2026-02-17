@@ -66,10 +66,17 @@ export class SculptMode implements Mode {
             } else {
               params.operations.combineMode = "Add";
             }
+            if (state.softness == 0.0) {
+              params.operations.dirtyTrackingEnabled = false;
+            }
             params.operations.insertEllipsoid(untrack(pointUnderRay2), new THREE.Quaternion(), new THREE.Vector3().addScalar(0.5 * state.brushSize * 10.0));
+            if (state.softness == 0.0) {
+              drawInBrickmap(params.brickMap, untrack(pointUnderRay2), state.isNegativeBrush, state.brushSize, 0.0);
+              params.operations.dirtyTrackingEnabled = true;
+            }
             params.updateSdf();
             params.operations.combineMode = "Add";
-            let lastPt = pointUnderRay2();
+            let lastPt = untrack(pointUnderRay2);
             createComputed(on(
               pointUnderRay2,
               (pointUnderRay) => {
@@ -81,7 +88,14 @@ export class SculptMode implements Mode {
                 } else {
                   params.operations.combineMode = "Add";
                 }
+                if (state.softness == 0.0) {
+                  params.operations.dirtyTrackingEnabled = false;
+                }
                 params.operations.insertCapsulePointToPoint(lastPt, pointUnderRay, 0.5 * state.brushSize * 10.0);
+                if (state.softness == 0.0) {
+                  strokeInBrickmap(params.brickMap, lastPt, pointUnderRay, state.isNegativeBrush, state.brushSize, 0.0);
+                  params.operations.dirtyTrackingEnabled = true;
+                }
                 params.updateSdf();
                 params.operations.combineMode = "Add";
                 lastPt = pointUnderRay;
