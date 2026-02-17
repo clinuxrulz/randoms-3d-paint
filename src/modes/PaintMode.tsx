@@ -59,10 +59,13 @@ export class PaintMode implements Mode {
             }
             let pointUnderRay2 = pointUnderRay as Accessor<NonNullable<ReturnType<typeof pointUnderRay>>>;
             params.operations.combineMode = "Paint";
+            params.operations.dirtyTrackingEnabled = false;
             params.operations.insertEllipsoid(untrack(pointUnderRay2), new THREE.Quaternion(), new THREE.Vector3().addScalar(0.5 * state.brushSize * 10.0));
+            drawInBrickmap(params.brickMap, untrack(pointUnderRay2), state.brushSize, untrack(params.currentColour) ?? defaultColour);
+            params.operations.dirtyTrackingEnabled = true;
             params.updatePaint();
             params.operations.combineMode = "Add";
-            let lastPt = pointUnderRay2();
+            let lastPt = untrack(pointUnderRay2);
             createComputed(on(
               pointUnderRay2,
               (pointUnderRay) => {
@@ -70,7 +73,10 @@ export class PaintMode implements Mode {
                   return;
                 }
                 params.operations.combineMode = "Paint";
+                params.operations.dirtyTrackingEnabled = false;
                 params.operations.insertCapsulePointToPoint(lastPt, pointUnderRay, 0.5 * state.brushSize * 10.0);
+                strokeInBrickmap(params.brickMap, lastPt, untrack(pointUnderRay2), state.brushSize, untrack(params.currentColour) ?? defaultColour);
+                params.operations.dirtyTrackingEnabled = true;
                 params.updatePaint();
                 params.operations.combineMode = "Add";
                 lastPt = pointUnderRay;
