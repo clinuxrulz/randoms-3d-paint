@@ -73,7 +73,7 @@ float map2(vec3 p) {
   return abs(length(p - vec3(512.0*VOXEL_SIZE)) - 100.0 * VOXEL_SIZE);
 }
 
-const int MAX_STEPS = 200;
+const int MAX_STEPS = 1000;
 const float MIN_DIST = 1.0;
 const float MAX_DIST = 10000.0;
 

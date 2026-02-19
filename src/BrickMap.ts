@@ -365,8 +365,8 @@ export class BrickMap {
 
   private _march_tmpV3_1 = new THREE.Vector3();
   march(ro: THREE.Vector3, rd: THREE.Vector3, t: [ number, ]): boolean {
-    const MAX_STEPS = 200;
-    const MIN_DIST = 5.0;
+    const MAX_STEPS = 1000;
+    const MIN_DIST = 1.0;
     const MAX_DIST = 10000.0;
     t[0] = 0.0;
     for (let i = 0; i < MAX_STEPS; ++i) {
