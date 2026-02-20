@@ -56,6 +56,43 @@ export class BrickMap {
     }
   }
 
+  obtain(params: {
+    indirectionData: Uint8Array<ArrayBuffer>,
+    atlasData: Uint8Array<ArrayBuffer>,
+    colourData: Uint8Array<ArrayBuffer>,
+    freeBricks: number[],
+    brickMapEntries: [ number, number, ][],
+  }) {
+    this.indirectionData = params.indirectionData;
+    this.atlasData = params.atlasData;
+    this.colourData = params.colourData;
+    this.freeBricks = params.freeBricks;
+    this.brickMap.clear();
+    for (let [ k, v, ] of params.brickMapEntries) {
+      this.brickMap.set(k, v);
+    }
+  }
+
+  release(): {
+    indirectionData: Uint8Array<ArrayBuffer>,
+    atlasData: Uint8Array<ArrayBuffer>,
+    colourData: Uint8Array<ArrayBuffer>,
+    freeBricks: number[],
+    brickMapEntries: [ number, number, ][],
+  } {
+    let brickMapEntries: [ number, number, ][] = [];
+    for (let entry of this.brickMap) {
+      brickMapEntries.push(entry);
+    }
+    return {
+      indirectionData: this.indirectionData,
+      atlasData: this.atlasData,
+      colourData: this.colourData,
+      freeBricks: this.freeBricks,
+      brickMapEntries,
+    };
+  }
+
   async load(version: number, reader: ReaderHelper) {
     await reader.read(
       this.indirectionData,
@@ -835,8 +872,11 @@ const float HALF_VOLUME_SIZE = ${((RES >> 1) * VOXEL_SIZE).toFixed(1)};
 vec4 colour(vec3 p) {
   vec3 p_local = p + HALF_VOLUME_SIZE;
   vec3 uvw = p_local / ${(GRID_RES * BRICK_L_RES * VOXEL_SIZE).toFixed(1)};
-  vec4 brickInfo = texture(uIndirectionTex, uvw);
-  vec3 cellLocal = fract(uvw * GRID_RES);
+  vec3 gridFloat = uvw * GRID_RES;
+  vec3 gridId = floor(gridFloat);
+  vec3 cellLocal = gridFloat - gridId;
+  vec3 safeUVW = (gridId + 0.5) / GRID_RES;
+  vec4 brickInfo = texture(uIndirectionTex, safeUVW);
   if (brickInfo.a < 0.9) {
     return vec4(0.0, 0.0, 0.0, 1.0);
   }
@@ -850,8 +890,11 @@ vec4 colour(vec3 p) {
 float map(vec3 p, vec3 rd) {
     vec3 p_local = p + HALF_VOLUME_SIZE;
     vec3 uvw = p_local / ${(GRID_RES * BRICK_L_RES * VOXEL_SIZE).toFixed(1)};
-    vec4 brickInfo = texture(uIndirectionTex, uvw);
-    vec3 cellLocal = fract(uvw * GRID_RES);
+    vec3 gridFloat = uvw * GRID_RES;
+    vec3 gridId = floor(gridFloat);
+    vec3 cellLocal = gridFloat - gridId;
+    vec3 safeUVW = (gridId + 0.5) / GRID_RES;
+    vec4 brickInfo = texture(uIndirectionTex, safeUVW);
     if (brickInfo.a > 0.9) {
         vec3 brickBase = brickInfo.xyz * 255.0 * 10.0;
         vec3 atlasVoxelPos = brickBase + 1.0 + (cellLocal * 8.0);
