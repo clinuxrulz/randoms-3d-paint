@@ -42,8 +42,7 @@ export class AsyncSdfModel {
   }
 
   async *load(
-    version: number,
-    reader: ReadableStreamDefaultReader<Uint8Array>,
+    readableStream: ReadableStream,
   ): AsyncGenerator<{ workDone: number, totalWork: number, }, void, unknown> {
     const worker = this.ensureWorkerInitialized();
     let resolveNext: (value: any) => void;
@@ -70,9 +69,9 @@ export class AsyncSdfModel {
     worker.postMessage(
       {
         method: "load",
-        params: { version, reader, onProgressId, onDoneId },
+        params: { readableStream, onProgressId, onDoneId },
       },
-      [ reader, ],
+      [ readableStream, ],
     );
     while (true) {
       let event = await resolveNextPromise;
@@ -88,4 +87,6 @@ export class AsyncSdfModel {
       }
     }
   }
+
+  //async save(version: number, writer: Writ)
 }
