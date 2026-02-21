@@ -10,6 +10,7 @@ self.addEventListener("message", (e) => {
   let method = data.method;
   let params = data.params;
   switch (method) {
+    case "load":
     case "releaseBrickMapToWorker":
       break;
     case "obtainBrickMapFromWorker":
