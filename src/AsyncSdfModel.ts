@@ -44,7 +44,7 @@ export class AsyncSdfModel {
   async *load(
     readableStream: ReadableStream,
   ): AsyncGenerator<{ workDone: number, totalWork: number, }, void, unknown> {
-    const worker = this.ensureWorkerInitialized();
+    let worker = this.ensureWorkerInitialized();
     let resolveNext: (value: any) => void;
     let mkResolveNextPromise =
       () => new Promise<
@@ -88,5 +88,80 @@ export class AsyncSdfModel {
     }
   }
 
-  //async save(version: number, writer: Writ)
+  async save(writableStream: WritableStream): Promise<void> {
+    let worker = this.ensureWorkerInitialized();
+    let onDoneResolve = () => {};
+    let onDoneReject = (reason: any) => {};
+    let onDonePromise = new Promise<void>((resolve, reject) => {
+      onDoneResolve = resolve;
+      onDoneReject = reject;
+    });
+    let onDoneId = this.registerCallback((params) => {
+      this.unregisterCallback(onDoneId);
+      if (params.result.type == "Err") {
+        onDoneReject(new Error(params.result.message));
+        return;
+      }
+      onDoneResolve();
+    });
+    worker.postMessage({
+      method: "save",
+      params: {
+        writableStream,
+      },
+    });
+    return onDonePromise;
+  }
+
+  async lock(): Promise<{
+    indirectionData: Uint8Array<ArrayBuffer>,
+    atlasData: Uint8Array<ArrayBuffer>,
+    colourData: Uint8Array<ArrayBuffer>,
+  }> {
+    let worker = this.ensureWorkerInitialized();
+    let doneResolve: (params: {
+      indirectionData: Uint8Array<ArrayBuffer>,
+      atlasData: Uint8Array<ArrayBuffer>,
+      colourData: Uint8Array<ArrayBuffer>,
+    }) => void = () => {};
+    let donePromise = new Promise<{
+      indirectionData: Uint8Array<ArrayBuffer>,
+      atlasData: Uint8Array<ArrayBuffer>,
+      colourData: Uint8Array<ArrayBuffer>,
+    }>((resolve) => doneResolve = resolve);
+    let doneId = this.registerCallback((params) => {
+      this.unregisterCallback(doneId);
+      doneResolve(params);
+    });
+    worker.postMessage({
+      method: "lock",
+      params: {
+        doneId,
+      },
+    });
+    return donePromise;
+  }
+
+  async unlock(params: {
+    indirectionData: Uint8Array<ArrayBuffer>,
+    atlasData: Uint8Array<ArrayBuffer>,
+    colourData: Uint8Array<ArrayBuffer>,
+  }) {
+    let worker = this.ensureWorkerInitialized();
+    let doneResolve = () => {};
+    let donePromise = new Promise<void>((resolve) => doneResolve = resolve);
+    let doneId = this.registerCallback(() => {
+      this.unregisterCallback(doneId);
+      doneResolve();
+    });
+    worker.postMessage(
+      {
+        method: "unlock",
+        params,
+      },
+      [ params.indirectionData, params.atlasData, params.colourData ],
+    );
+    return donePromise;
+  }
 }
+
