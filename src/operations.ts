@@ -1,6 +1,6 @@
 import * as THREE from "three";
 import { BrickMap } from "./BrickMap";
-import { ReaderHelper } from "./load-save";
+import { ReaderHelper } from "./ReaderHelper";
 
 export class Operations {
   operations: Operation[] = [];
@@ -210,6 +210,17 @@ export class Operations {
       maxYIdx,
       maxZIdx,
       */
+    );
+    this.dirtyRegion.makeEmpty();
+  }
+
+  async* updateBrickMapAsyncGen(brickMap: BrickMap) {
+    if (this.dirtyRegion.isEmpty()) {
+      return;
+    }
+    yield* this.bvh.updateBrickMapAsyncGen(
+      brickMap,
+      this.dirtyRegion,
     );
     this.dirtyRegion.makeEmpty();
   }
@@ -847,6 +858,126 @@ export class OperationBVH {
     const invRotCache = new Map<number, THREE.Quaternion>();
     const sqrt3 = Math.sqrt(3.0);
     for (let cz = minZIdx; cz < maxZIdx; cz += CHUNK_SIZE) {
+      for (let cy = minYIdx; cy < maxYIdx; cy += CHUNK_SIZE) {
+        for (let cx = minXIdx; cx < maxXIdx; cx += CHUNK_SIZE) {
+          const cMaxX = Math.min(cx + CHUNK_SIZE, maxXIdx);
+          const cMaxY = Math.min(cy + CHUNK_SIZE, maxYIdx);
+          const cMaxZ = Math.min(cz + CHUNK_SIZE, maxZIdx);
+          _chunkAABB.min.set((cx - 512) * 10.0, (cy - 512) * 10.0, (cz - 512) * 10.0);
+          _chunkAABB.max.set((cMaxX - 512) * 10.0, (cMaxY - 512) * 10.0, (cMaxZ - 512) * 10.0);
+          chunkOps.length = 0;
+          this.query(_chunkAABB, chunkOps);
+          chunkOps.sort((a, b) => a.index - b.index);
+          if (chunkOps.length === 0) {
+            for (let k = cz; k < cMaxZ; ++k) {
+              for (let j = cy; j < cMaxY; ++j) {
+                for (let i = cx; i < cMaxX; ++i) {
+                  brickMap.set(i, j, k, 0);
+                }
+              }
+            }
+            continue;
+          }
+          for (const op of chunkOps) {
+            if (!invRotCache.has(op.index)) {
+              invRotCache.set(op.index, op.orientation.clone().conjugate());
+            }
+          }
+          for (let k = cz; k < cMaxZ; ++k) {
+            const atMinZ = (k - 512) * 10.0;
+            for (let j = cy; j < cMaxY; ++j) {
+              const atMinY = (j - 512) * 10.0;
+              for (let i = cx; i < cMaxX; ++i) {
+                const atMinX = (i - 512) * 10.0;
+                _pt.set(atMinX, atMinY, atMinZ);
+                let dist = Number.POSITIVE_INFINITY;
+                let colour: THREE.Color | undefined = undefined;
+                for (let op of chunkOps) {
+                  const qInv = invRotCache.get(op.index)!; _ptLocal.copy(_pt).sub(op.origin).applyQuaternion(qInv);
+                  let sdf = 0;
+                  switch (op.operationShape.type) {
+                    case "Ellipsoid":
+                      sdf = ellipsoidSDF(op.operationShape.radius, _ptLocal);
+                      break;
+                    case "Box":
+                      sdf = boxSDF(op.operationShape.len, _ptLocal);
+                      break;
+                    case "Capsule":
+                      sdf = capsuleSDF(op.operationShape.lenX, op.operationShape.radius, _ptLocal);
+                      break;
+                  }
+                  switch (op.combinedType) {
+                    case "Add":
+                      if (op.softness == 0.0) {
+                        dist = Math.min(dist, sdf);
+                      } else {
+                        let k = op.softness * 4.0;
+                        let h = Math.max(k - Math.abs(dist - sdf), 0.0);
+                        dist = Math.min(dist, sdf) - h*h*0.25/k;
+                      }
+                      break;
+                    case "Subtract":
+                      if (op.softness == 0.0) {
+                        dist = Math.max(dist, -sdf);
+                      } else {
+                        // return -opSmoothUnion(a,-b,k);
+                        let a = sdf;
+                        let b = -dist;
+                        let k = op.softness * 4.0;
+                        let h = Math.max(k - Math.abs(a - b), 0.0);
+                        dist = -(Math.min(a, b) - h*h*0.25/k);
+                      }
+                      break;
+                    case "Paint":
+                      if (sdf <= 0.0) {
+                        colour = op.colour ?? colour; 
+                      }
+                      break;
+                  }
+                }
+                if (Number.isFinite(dist)) {
+                  dist /= 10.0 * sqrt3;
+                  let a = Math.max(1, Math.min(255, 128 - Math.floor(127.0 * dist)));
+                  brickMap.set(i, j, k, a);
+                } else {
+                  brickMap.set(i, j, k, 0);
+                }
+                if (colour != undefined) {
+                  brickMap.paint(
+                    i, j, k,
+                    Math.floor(colour.r * 255.0),
+                    Math.floor(colour.g * 255.0),
+                    Math.floor(colour.b * 255.0),
+                  );
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+    dirtyRegion.makeEmpty();
+  }
+
+  async* updateBrickMapAsyncGen(brickMap: BrickMap, dirtyRegion: THREE.Box3) {
+    if (dirtyRegion.isEmpty()) {
+      return;
+    }
+    let _chunkAABB = this._chunkAABB;
+    let _pt = this._pt;
+    let _ptLocal = this._ptLocal;
+    const minXIdx = Math.floor(dirtyRegion.min.x / 10.0) + 512;
+    const minYIdx = Math.floor(dirtyRegion.min.y / 10.0) + 512;
+    const minZIdx = Math.floor(dirtyRegion.min.z / 10.0) + 512;
+    const maxXIdx = Math.ceil(dirtyRegion.max.x / 10.0) + 512;
+    const maxYIdx = Math.ceil(dirtyRegion.max.y / 10.0) + 512;
+    const maxZIdx = Math.ceil(dirtyRegion.max.z / 10.0) + 512;
+    const CHUNK_SIZE = 8;
+    const chunkOps: Operation[] = [];
+    const invRotCache = new Map<number, THREE.Quaternion>();
+    const sqrt3 = Math.sqrt(3.0);
+    let totalWork = maxZIdx - minZIdx + 1;
+    for (let cz = minZIdx; cz < maxZIdx; cz += CHUNK_SIZE, yield { workDone: cz - minZIdx, totalWork, }) {
       for (let cy = minYIdx; cy < maxYIdx; cy += CHUNK_SIZE) {
         for (let cx = minXIdx; cx < maxXIdx; cx += CHUNK_SIZE) {
           const cMaxX = Math.min(cx + CHUNK_SIZE, maxXIdx);

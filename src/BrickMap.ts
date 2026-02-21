@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import { ReaderHelper } from "./load-save";
+import { ReaderHelper } from "./ReaderHelper";
 
 const RES_BITS = 10;
 const RES = (1 << RES_BITS);
@@ -56,41 +56,26 @@ export class BrickMap {
     }
   }
 
-  obtain(params: {
+  lock(): {
     indirectionData: Uint8Array<ArrayBuffer>,
     atlasData: Uint8Array<ArrayBuffer>,
     colourData: Uint8Array<ArrayBuffer>,
-    freeBricks: number[],
-    brickMapEntries: [ number, number, ][],
-  }) {
-    this.indirectionData = params.indirectionData;
-    this.atlasData = params.atlasData;
-    this.colourData = params.colourData;
-    this.freeBricks = params.freeBricks;
-    this.brickMap.clear();
-    for (let [ k, v, ] of params.brickMapEntries) {
-      this.brickMap.set(k, v);
-    }
-  }
-
-  release(): {
-    indirectionData: Uint8Array<ArrayBuffer>,
-    atlasData: Uint8Array<ArrayBuffer>,
-    colourData: Uint8Array<ArrayBuffer>,
-    freeBricks: number[],
-    brickMapEntries: [ number, number, ][],
   } {
-    let brickMapEntries: [ number, number, ][] = [];
-    for (let entry of this.brickMap) {
-      brickMapEntries.push(entry);
-    }
     return {
       indirectionData: this.indirectionData,
       atlasData: this.atlasData,
       colourData: this.colourData,
-      freeBricks: this.freeBricks,
-      brickMapEntries,
     };
+  }
+
+  unlock(params: {
+    indirectionData: Uint8Array<ArrayBuffer>,
+    atlasData: Uint8Array<ArrayBuffer>,
+    colourData: Uint8Array<ArrayBuffer>,
+  }) {
+    this.indirectionData = params.indirectionData;
+    this.atlasData = params.atlasData;
+    this.colourData = params.colourData;
   }
 
   async load(version: number, reader: ReaderHelper) {
