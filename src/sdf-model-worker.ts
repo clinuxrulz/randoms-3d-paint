@@ -135,12 +135,32 @@ async function save(params: {
 
 function lock(params: { doneId: number, }) {
   let result = brickMap.lock();
+  let dirtyAtlasBricks: "all" | number[];
+  if (brickMap.forceAllAtlasDirty) {
+    dirtyAtlasBricks = "all";
+  } else {
+    dirtyAtlasBricks = [ ...brickMap.dirtyAtlasBricks, ];
+  }
+  let dirtyColourBricks: "all" | number[];
+  if (brickMap.forceAllColoursDirty) {
+    dirtyColourBricks = "all";
+  } else {
+    dirtyColourBricks = [ ...brickMap.dirtyColourBricks, ];
+  }
+  brickMap.forceAllAtlasDirty = false;
+  brickMap.forceAllColoursDirty = false;
+  brickMap.dirtyAtlasBricks.clear();
+  brickMap.dirtyColourBricks.clear();
   self.postMessage(
     {
       method: "callCallback",
       params: {
         id: params.doneId,
-        params: result,
+        params: {
+          ...result,
+          dirtyAtlasBricks,
+          dirtyColourBricks,
+        },
       },
     },
     "/",

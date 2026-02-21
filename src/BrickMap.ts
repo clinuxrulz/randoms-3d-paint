@@ -1,23 +1,23 @@
 import * as THREE from "three";
 import { ReaderHelper } from "./ReaderHelper";
 
-const RES_BITS = 10;
-const RES = (1 << RES_BITS);
-const BRICK_L_RES_BITS = 3;
-const BRICK_L_RES = (1 << BRICK_L_RES_BITS);
-const BRICK_L_RES_MASK = BRICK_L_RES - 1;
-const GRID_RES_BITS = RES_BITS - BRICK_L_RES_BITS;
-const GRID_RES = (1 << GRID_RES_BITS);
-const BRICK_P_RES = BRICK_L_RES + 2; // +2 for gutter
-const ATLAS_RES_BITS = 9;
-const ATLAS_RES = (1 << ATLAS_RES_BITS);
-const BRICKS_PER_RES = Math.floor(ATLAS_RES / BRICK_P_RES);
-const MAX_BRICKS = BRICKS_PER_RES * BRICKS_PER_RES * BRICKS_PER_RES;
+export const RES_BITS = 10;
+export const RES = (1 << RES_BITS);
+export const BRICK_L_RES_BITS = 3;
+export const BRICK_L_RES = (1 << BRICK_L_RES_BITS);
+export const BRICK_L_RES_MASK = BRICK_L_RES - 1;
+export const GRID_RES_BITS = RES_BITS - BRICK_L_RES_BITS;
+export const GRID_RES = (1 << GRID_RES_BITS);
+export const BRICK_P_RES = BRICK_L_RES + 2; // +2 for gutter
+export const ATLAS_RES_BITS = 9;
+export const ATLAS_RES = (1 << ATLAS_RES_BITS);
+export const BRICKS_PER_RES = Math.floor(ATLAS_RES / BRICK_P_RES);
+export const MAX_BRICKS = BRICKS_PER_RES * BRICKS_PER_RES * BRICKS_PER_RES;
   // [x, y, z, active, ...]
-const GRID_DATA_SIZE = (GRID_RES * GRID_RES * GRID_RES) * 4
+export const GRID_DATA_SIZE = (GRID_RES * GRID_RES * GRID_RES) * 4
 
-const VOXEL_SIZE = 10.0;
-const HALF_VOLUME_SIZE = (RES >> 1) * VOXEL_SIZE;
+export const VOXEL_SIZE = 10.0;
+export const HALF_VOLUME_SIZE = (RES >> 1) * VOXEL_SIZE;
 
 export type BrickMapTHREETextures = {
   iTex: THREE.Data3DTexture,
@@ -40,11 +40,11 @@ export class BrickMap {
   // GridIdx -> AtlasIdx
   private brickMap = new Map<number, number>();
 
-  private dirtyAtlasBricks = new Set<number>();
-  private dirtyColourBricks = new Set<number>();
+  dirtyAtlasBricks = new Set<number>();
+  dirtyColourBricks = new Set<number>();
 
-  private forceAllAtlasDirty = false;
-  private forceAllColoursDirty = false;
+  forceAllAtlasDirty = false;
+  forceAllColoursDirty = false;
 
   get numBricks(): number {
     return this.brickMap.size;
