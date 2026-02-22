@@ -304,6 +304,55 @@ export class AsyncSdfModel {
     return donePromise;
   }
 
+  async march(ro: THREE.Vector3, rd: THREE.Vector3): Promise<{
+    hit: boolean,
+    t: [number],
+  }> {
+    let worker = this.ensureWorkerInitialized();
+    let doneResolve: (params: {
+      hit: boolean,
+      t: [number],
+    }) => void = () => {};
+    let donePromise = new Promise<{
+      hit: boolean,
+      t: [number],
+    }>((resolve) => doneResolve = resolve);
+    let doneId = this.registerCallback((params) => {
+      this.unregisterCallback(doneId);
+      doneResolve(params);
+    });
+    worker.postMessage({
+      method: "march",
+      params: {
+        doneId,
+        ro: { x: ro.x, y: ro.y, z: ro.z },
+        rd: { x: rd.x, y: rd.y, z: rd.z },
+      },
+    });
+    return donePromise;
+  }
+
+  async writeShaderCode(): Promise<string> {
+    let worker = this.ensureWorkerInitialized();
+    let doneResolve: (params: {
+      code: string,
+    }) => void = () => {};
+    let donePromise = new Promise<string>((resolve) => {
+      doneResolve = (params) => resolve(params.code);
+    });
+    let doneId = this.registerCallback((params) => {
+      this.unregisterCallback(doneId);
+      doneResolve(params);
+    });
+    worker.postMessage({
+      method: "writeShaderCode",
+      params: {
+        doneId,
+      },
+    });
+    return donePromise;
+  }
+
   initTexturesThreeJs(
     params: THREE.ShaderMaterialParameters,
   ): BrickMapTHREETextures {

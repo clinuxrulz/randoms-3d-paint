@@ -1,7 +1,7 @@
 import { batch, createComputed, createMemo, createSignal, on, onCleanup, onMount, Show, untrack, type Component } from 'solid-js';
 import * as THREE from "three";
 import { GLTFExporter } from "three/addons/exporters/GLTFExporter.js";
-import { BrickMap, BrickMapTextures } from './BrickMap';
+import { AsyncSdfModel } from './AsyncSdfModel';
 import RendererView, { RendererViewController } from './RendererView';
 import { createStore } from 'solid-js/store';
 import { Mode } from './modes/Mode';
@@ -10,7 +10,7 @@ import { IdleMode } from './modes/IdleMode';
 import { DrawMode } from './modes/DrawMode';
 import { InsertPrimitivesMode } from './modes/InsertPrimitivesMode';
 import { SculptMode } from './modes/SculptMode';
-import { downloadScene, loadScene, saveScene, uploadScene } from './load-save';
+
 import { PaintMode } from './modes/PaintMode';
 import ColourInput from './ColourInput';
 import { march, pointsAndTriangleIndicesToGeometry } from './marching_cubes/marching_cubes';
@@ -18,7 +18,7 @@ import { march, pointsAndTriangleIndicesToGeometry } from './marching_cubes/marc
 import { UVUnwrapper } from 'xatlas-three';
 import FileSaver from "file-saver";
 import { renderTargetToDataURL } from './util';
-import { Operations } from './operations';
+
 
 const defaultPalette = [
   // Grayscale (White to Black)
@@ -76,33 +76,24 @@ const App: Component = () => {
     return state.palette.find(({ id }) => id === colourId)?.colour;
   });
   let operations = new Operations();
-  let brickMap = new BrickMap();
-  createComputed(on(
-    currentColour,
-    (colour) => {
-      if (colour == undefined) {
-        return;
-      }
-      operations.colour.copy(colour);
-    }
-  ));
+  let model = new AsyncSdfModel();
+
   let [ rendererViewController, setRendererViewController, ] = createSignal<RendererViewController>();
   let setMode = (mode: { new(modeParams: ModeParams): Mode, }) => setState("mkMode", () => mode);
   let modeParams: ModeParams = {
     endMode: () => setMode(IdleMode),
-    operations,
-    brickMap,
+    model,
     canvasSize: () => rendererViewController()?.canvasSize(),
     pointerPos: () => state.pointerPos,
     pointerDown: () => state.pointerDown,
     currentColour,
-    updateSdf: () => {
-      operations.updateBrickMap(brickMap);
+    updateSdf: async () => {
+      await model.updateBrickMap();
       let controller = rendererViewController();
       controller?.onBrickMapChanged();
     },
-    updatePaint: () => {
-      operations.updateBrickMap(brickMap);
+    updatePaint: async () => {
+      await model.updateBrickMap();
       let controller = rendererViewController();
       controller?.onBrickMapPaintChanged();
     },
@@ -253,15 +244,27 @@ const App: Component = () => {
     controller?.scaleTransform();
   };
   let loadSnapshot = async () => {
-    await loadScene("quicksave.dat", operations);
+    const fileHandle = await navigator.storage.getDirectory();
+    const file = await fileHandle.getFileHandle("quicksave.dat");
+    const readable = await file.createReadable();
+    for await (const progress of model.load(readable)) {
+      console.log(progress);
+    }
     modeParams.updateSdf();
     modeParams.updatePaint();
   };
   let saveSnapshot = async () => {
-    await saveScene("quicksave.dat", operations);
+    const fileHandle = await navigator.storage.getDirectory();
+    const file = await fileHandle.getFileHandle("quicksave.dat", { create: true });
+    const writable = await file.createWritable();
+    await model.save(writable);
+    await writable.close();
   };
   let load = async (file: File) => {
-    await uploadScene(file, operations);
+    const readable = file.stream();
+    for await (const progress of model.load(readable)) {
+      console.log(progress);
+    }
     modeParams.updateSdf();
     modeParams.updatePaint();
   };
@@ -277,11 +280,20 @@ const App: Component = () => {
     if (!filename.toLowerCase().endsWith(".randoms-3d-paint")) {
       filename += ".randoms-3d-paint";
     }
-    await downloadScene(filename, operations);
+    const fileHandle = await window.showSaveFilePicker({
+      suggestedName: filename,
+    });
+    const writable = await fileHandle.createWritable();
+    await model.save(writable);
+    await writable.close();
   };
   let march_ = () => {
     let pointsAndTriangleIndices = march({
-      sdf: (x: number, y: number, z: number) => operations.bvh.evalSDF(x*10*10/2, y*10*10/2, z*10*10/2) / 50.0,
+      sdf: (x: number, y: number, z: number) => {
+        let t: [number] = [0];
+        model.march(new THREE.Vector3(x,y,z), new THREE.Vector3(0,0,1), t);
+        return t[0];
+      },
       minX: -51*2,
       minY: -51*2,
       minZ: -51*2,
@@ -348,21 +360,21 @@ const App: Component = () => {
       }
     `;
     const bakeFragmentShader = `
-      ${brickMap.writeShaderCode()}
+${(await model.writeShaderCode())}
 
-      varying vec3 vWorldPosition;
-      //vec3 colorFunc(vec3 p) { return vec3(sin(p.x), cos(p.y), sin(p.z)); }
-      void main() { gl_FragColor = vec4(colour(vWorldPosition).rgb, 1.0); }
-    `;
+varying vec3 vWorldPosition;
+//vec3 colorFunc(vec3 p) { return vec3(sin(p.x), cos(p.y), sin(p.z)); }
+void main() { gl_FragColor = vec4(colour(vWorldPosition).rgb, 1.0); }
+`;
     const bakeDimension = 1024;
     const renderTarget = new THREE.WebGLRenderTarget(bakeDimension, bakeDimension);
     const bakeCamera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
     let shaderParams: THREE.ShaderMaterialParameters = {
       vertexShader: bakeVertexShader,
       fragmentShader: bakeFragmentShader,
-      side: THREE.DoubleSide 
+      side: THREE.DoubleSide
     };
-    let bmTxt = brickMap.initTexturesThreeJs(shaderParams);
+    let bmTxt = model.initTexturesThreeJs(shaderParams);
     const bakeMaterial = new THREE.ShaderMaterial(shaderParams);
     const originalMaterial = mesh.material;
     const oldTarget = renderer.getRenderTarget();
@@ -445,7 +457,7 @@ const App: Component = () => {
         onPointerUp={onPointerUp}
       >
         <RendererView
-          brickMap={brickMap}
+          model={model}
           hideBrickMap={showingMarchedMesh() != undefined}
           onDragingEvent={(isDraging) => {
             setTransformDragging(isDraging);

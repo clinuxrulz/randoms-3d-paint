@@ -49,8 +49,48 @@ self.addEventListener("message", (e) => {
     case "setSoftness":
       setSoftness(params);
       break;
+    case "march":
+      march(params);
+      break;
+    case "writeShaderCode":
+      writeShaderCode(params);
+      break;
   }
 });
+
+async function march(params: {
+  ro: { x: number, y: number, z: number },
+  rd: { x: number, y: number, z: number },
+  doneId: number,
+}) {
+  let ro = new THREE.Vector3(params.ro.x, params.ro.y, params.ro.z);
+  let rd = new THREE.Vector3(params.rd.x, params.rd.y, params.rd.z);
+  let t: [number] = [0];
+  let hit = brickMap.march(ro, rd, t);
+  self.postMessage({
+    method: "callCallback",
+    params: {
+      id: params.doneId,
+      params: {
+        hit,
+        t,
+      },
+    },
+  });
+}
+
+async function writeShaderCode(params: { doneId: number }) {
+  let code = brickMap.writeShaderCode();
+  self.postMessage({
+    method: "callCallback",
+    params: {
+      id: params.doneId,
+      params: {
+        code,
+      },
+    },
+  });
+}
 
 async function load(params: {
   readableStream: ReadableStream,
