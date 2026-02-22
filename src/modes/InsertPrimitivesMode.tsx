@@ -78,18 +78,26 @@ export class InsertPrimitivesMode implements Mode {
         q.conjugate();
         if (primitive2.primitive == "Sphere") {
           let r = new THREE.Vector3(INIT_SPHERE_RADIUS, INIT_SPHERE_RADIUS, INIT_SPHERE_RADIUS).multiply(scale);
-          params.operations.insertEllipsoid(
+          params.model.addOperation({
+            operationShape: {
+              type: "Ellipsoid",
+              radius: r,
+            },
             origin,
             orientation,
-            r,
-          );
+            softness: 0,
+          });
         } else {
           let b = new THREE.Vector3(INIT_CUBE_SIZE, INIT_CUBE_SIZE, INIT_CUBE_SIZE).multiply(scale);
-          params.operations.insertBox(
+          params.model.addOperation({
+            operationShape: {
+              type: "Box",
+              len: b,
+            },
             origin,
             orientation,
-            b,
-          );
+            softness: 0,
+          });
         }
       }
       params.updateSdf();

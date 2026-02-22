@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import { Operation } from "./operations";
+import { Operation, OperationShape } from "./operations";
 import SdfModelWorker from "./sdf-model-worker?worker";
 import { ATLAS_RES, BRICK_P_RES, BrickMapTHREETextures, BRICKS_PER_RES, GRID_RES } from "./BrickMap";
 
@@ -123,6 +123,7 @@ export class AsyncSdfModel {
     dirtyAtlasBricks: "all" | number[],
     dirtyColourBricks: "all" | number[],
   }> {
+    console.log("AsyncSdfModel.lock()");
     let worker = this.ensureWorkerInitialized();
     let doneResolve: (params: {
       indirectionData: Uint8Array<ArrayBuffer>,
@@ -140,6 +141,9 @@ export class AsyncSdfModel {
     }>((resolve) => doneResolve = resolve);
     let doneId = this.registerCallback((params) => {
       this.unregisterCallback(doneId);
+      params.indirectionData = new Uint8Array(params.indirectionData);
+      params.atlasData = new Uint8Array(params.atlasData);
+      params.colourData = new Uint8Array(params.colourData);
       doneResolve(params);
     });
     worker.postMessage({
@@ -156,6 +160,7 @@ export class AsyncSdfModel {
     atlasData: Uint8Array<ArrayBuffer>,
     colourData: Uint8Array<ArrayBuffer>,
   }) {
+    console.log("AsyncSdfModel.unlock()");
     let worker = this.ensureWorkerInitialized();
     let doneResolve = () => {};
     let donePromise = new Promise<void>((resolve) => doneResolve = resolve);
@@ -173,7 +178,12 @@ export class AsyncSdfModel {
     return donePromise;
   }
 
-  async addOperation(operation: Operation) {
+  async addOperation(operation: {
+    origin: THREE.Vector3,
+    orientation: THREE.Quaternion,
+    operationShape: OperationShape,
+    softness: number,
+  }) {
     let worker = this.ensureWorkerInitialized();
     let doneResolve = () => {};
     let donePromise = new Promise<void>((resolve) => doneResolve = resolve);
@@ -456,6 +466,7 @@ export class AsyncSdfModel {
       dirtyAtlasBricks: "all" | number[],
     }
   ) {
+    console.log("AsyncSdfModel.updateTexturesThreeJs()", lockResult.dirtyAtlasBricks);
     textures.iTex.image.data = lockResult.indirectionData;
     textures.aTex.image.data = lockResult.atlasData;
     textures.iTex.needsUpdate = true;
@@ -470,6 +481,7 @@ export class AsyncSdfModel {
         textures.aTex.needsUpdate = true;
         return;
       }
+      gl.activeTexture(gl.TEXTURE0);
       gl.bindTexture(gl.TEXTURE_3D, (textureProperties as any).__webglTexture);
       gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
       gl.pixelStorei(gl.UNPACK_ROW_LENGTH, 0);
@@ -518,6 +530,8 @@ export class AsyncSdfModel {
       dirtyColourBricks: "all" | number[],
     }
   ) {
+    console.log("AsyncSdfModel.updatePaintThreeJs()", lockResult.dirtyColourBricks);
+    textures.cTex.image.data = lockResult.colourData;
     const gl = renderer.getContext() as WebGL2RenderingContext;
     let textureProperties = renderer.properties.get(textures.cTex);
     if (lockResult.dirtyColourBricks == "all") {
@@ -528,6 +542,7 @@ export class AsyncSdfModel {
       textures.cTex.needsUpdate = true;
       return;
     }
+    gl.activeTexture(gl.TEXTURE0);
     gl.bindTexture(gl.TEXTURE_3D, (textureProperties as any).__webglTexture);
     gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
     gl.pixelStorei(gl.UNPACK_ROW_LENGTH, 0);

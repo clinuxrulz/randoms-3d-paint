@@ -75,7 +75,7 @@ const App: Component = () => {
     }
     return state.palette.find(({ id }) => id === colourId)?.colour;
   });
-  let operations = new Operations();
+
   let model = new AsyncSdfModel();
 
   let [ rendererViewController, setRendererViewController, ] = createSignal<RendererViewController>();
@@ -244,9 +244,10 @@ const App: Component = () => {
     controller?.scaleTransform();
   };
   let loadSnapshot = async () => {
-    const fileHandle = await navigator.storage.getDirectory();
-    const file = await fileHandle.getFileHandle("quicksave.dat");
-    const readable = await file.createReadable();
+    const dir = await navigator.storage.getDirectory();
+    const fileHandle = await dir.getFileHandle("quicksave.dat");
+    const file = await fileHandle.getFile();
+    const readable = file.stream();
     for await (const progress of model.load(readable)) {
       console.log(progress);
     }
@@ -287,11 +288,10 @@ const App: Component = () => {
     await model.save(writable);
     await writable.close();
   };
-  let march_ = () => {
-    let pointsAndTriangleIndices = march({
-      sdf: (x: number, y: number, z: number) => {
-        let t: [number] = [0];
-        model.march(new THREE.Vector3(x,y,z), new THREE.Vector3(0,0,1), t);
+  let march_ = async () => {
+    let pointsAndTriangleIndices = await march({
+      sdf: async (x: number, y: number, z: number) => {
+        let { t } = await model.march(new THREE.Vector3(x,y,z), new THREE.Vector3(0,0,1));
         return t[0];
       },
       minX: -51*2,

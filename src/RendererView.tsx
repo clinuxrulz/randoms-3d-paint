@@ -1,4 +1,4 @@
-import { Accessor, batch, Component, createComputed, createResource, createSignal, on, onCleanup, onMount, Show, untrack } from "solid-js";
+import { Accessor, batch, Component, createComputed, createMemo, createResource, createSignal, on, onCleanup, onMount, Show, untrack } from "solid-js";
 import * as THREE from "three";
 import { AsyncSdfModel } from "./AsyncSdfModel";
 
@@ -10,9 +10,9 @@ const FOV_Y = 50.0;
 
 export type RendererViewController = {
   canvasSize: Accessor<THREE.Vector2 | undefined>,
-  onBrickMapChanged: () => void,
-  onBrickMapPaintChanged: () => void,
-  rerender: () => void,
+  onBrickMapChanged: () => Promise<void>,
+  onBrickMapPaintChanged: () => Promise<void>,
+  rerender: () => Promise<void>,
   moveTransform: () => void,
   rotateTransform: () => void,
   scaleTransform: () => void,
@@ -219,34 +219,111 @@ const RendererView: Component<{
     return new FullScreenQuad(mat);
   });
   
+  let rerender: () => Promise<void>;
+  {
+    let isRendering = false;
+    let renderResolvers: (() => void)[] = [];
+    rerender = () => {
+      let resolve: () => void;
+      let promise = new Promise<void>(r => resolve = r);
+      renderResolvers.push(resolve!);
+
+      if (isRendering) {
+        return promise;
+      }
+      isRendering = true;
+      requestAnimationFrame(() => {
+        const quad = fullScreenQuad();
+        const mat = material();
+        if (!quad || !mat) {
+          isRendering = false;
+          const resolvers = renderResolvers;
+          renderResolvers = [];
+          for (const r of resolvers) r();
+          return;
+        }
+        let renderer2 = renderer();
+        if (renderer2 == undefined) {
+          isRendering = false;
+          const resolvers = renderResolvers;
+          renderResolvers = [];
+          for (const r of resolvers) r();
+          return;
+        }
+        let camera2 = camera();
+        if (camera2 == undefined) {
+          isRendering = false;
+          const resolvers = renderResolvers;
+          renderResolvers = [];
+          for (const r of resolvers) r();
+          return;
+        }
+        let oribitControls2 = orbitControls();
+        if (oribitControls2 == undefined) {
+          isRendering = false;
+          const resolvers = renderResolvers;
+          renderResolvers = [];
+          for (const r of resolvers) r();
+          return;
+        }
+        oribitControls2.update(); 
+        mat.uniforms.viewMatrixInverse.value.copy(camera2.matrixWorld);
+        mat.uniforms.projectionMatrixInverse.value.copy(camera2.projectionMatrixInverse);
+        mat.uniforms.uCameraViewMatrix.value.copy(camera2.matrixWorldInverse);
+        mat.uniforms.uCameraProjectionMatrix.value.copy(camera2.projectionMatrix);
+        mat.uniforms.cameraPosition.value.copy(camera2.position);
+        //renderer2.clearColor();
+        renderer2.clearDepth();
+        if (!props.hideBrickMap) {
+          quad.render(renderer2);
+        }
+        renderer2.render(scene, camera2);
+        isRendering = false;
+        const resolvers = renderResolvers;
+        renderResolvers = [];
+        for (const r of resolvers) r();
+      });
+      return promise;
+    };
+  }
+  let _screenCoordsToRay_tmpRaycaster = new THREE.Raycaster();
+  let _screenCoordsToRay_tmpV2 = new THREE.Vector2();
   props.onInit({
     canvasSize,
     async onBrickMapChanged() {
       const r = renderer();
       const mat = material();
       if (!r || !mat) return;
-      const textures = mat.uniforms.uIndirectionTex.value;
+      const textures = {
+        iTex: mat.uniforms.uIndirectionTex.value,
+        aTex: mat.uniforms.uAtlasTex.value,
+        cTex: mat.uniforms.uColourTex.value,
+      };
       const result = await props.model.updateTextures({
         renderer: r,
         textures,
         updateAtlas: true,
         updateColours: false,
       });
-      rerender();
+      await rerender();
       await result.onAfterRender();
     },
     async onBrickMapPaintChanged() {
       const r = renderer();
       const mat = material();
       if (!r || !mat) return;
-      const textures = mat.uniforms.uIndirectionTex.value;
+      const textures = {
+        iTex: mat.uniforms.uIndirectionTex.value,
+        aTex: mat.uniforms.uAtlasTex.value,
+        cTex: mat.uniforms.uColourTex.value,
+      };
       const result = await props.model.updateTextures({
         renderer: r,
         textures,
         updateAtlas: false,
         updateColours: true,
       });
-      rerender();
+      await rerender();
       await result.onAfterRender();
     },
     rerender,
@@ -300,6 +377,7 @@ const RendererView: Component<{
     },
     renderer,
   });
+  let updateSize: () => void;
   onMount(() => {
     let canvas2 = canvas();
     if (canvas2 == undefined) {
@@ -318,7 +396,7 @@ const RendererView: Component<{
     });
     renderer2.setPixelRatio(window.devicePixelRatio);
     renderer2.autoClear = false;
-    let updateSize = () => {
+    updateSize = () => {
       const mat = material();
       if (!mat) return;
       let rect = canvas2.getBoundingClientRect();
@@ -390,6 +468,15 @@ const RendererView: Component<{
     rerender();
   });
   createComputed(on(
+    material,
+    (mat) => {
+      if (mat != undefined) {
+        updateSize?.();
+        rerender();
+      }
+    }
+  ));
+  createComputed(on(
     () => props.overlayObject3D,
     (overlayObject3D) => {
       if (overlayObject3D == undefined) {
@@ -403,7 +490,7 @@ const RendererView: Component<{
     },
   ));
   return (
-    <Show when={material()} fallback={<div>Loading...</div>}>
+    //<Show when={material()} fallback={<div>Loading...</div>}>
       <canvas
         ref={setCanvas}
         style={{
@@ -411,7 +498,7 @@ const RendererView: Component<{
           height: "100%",
         }}
       />
-    </Show>
+    //</Show>
   );
 };
 

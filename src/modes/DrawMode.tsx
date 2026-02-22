@@ -1,5 +1,4 @@
 import { Accessor, Component, createComputed, createMemo, on, untrack } from "solid-js";
-import { BrickMap } from "../BrickMap";
 import { Mode } from "./Mode";
 import { ModeParams } from "./ModeParams";
 
@@ -32,8 +31,8 @@ export class DrawMode implements Mode {
           lastX = pointerPos2.x - 0.5 * canvasSize2.x;
           lastY = -pointerPos2.y + 0.5 * canvasSize2.y;
         }
-        drawInBrickmap(params.brickMap, lastX, lastY);
-        params.updateSdf();
+        // drawInBrickmap(lastX, lastY);
+        // params.updateSdf();
         createComputed(on(
           pointerPos,
           (pointerPos) => {
@@ -46,10 +45,10 @@ export class DrawMode implements Mode {
             if (distSquared <= 5*5) {
               return;
             }
-            strokeInBrickmap(params.brickMap, lastX, lastY, x, y);
+            // strokeInBrickmap(lastX, lastY, x, y);
             lastX = x;
             lastY = y;
-            params.updateSdf();
+            // params.updateSdf();
           },
           { defer: true, },
         ));
@@ -68,7 +67,7 @@ export class DrawMode implements Mode {
   }
 }
 
-function drawInBrickmap(brickMap: BrickMap, x: number, y: number) {
+function drawInBrickmap(x: number, y: number) {
   let cx = 512 + Math.round(x);
   let cy = 512 + Math.round(y);
   let cz = 512;
@@ -94,18 +93,18 @@ function drawInBrickmap(brickMap: BrickMap, x: number, y: number) {
         ) {
           continue;
         }
-        brickMap.set(
+        /*brickMap.set(
           x,
           y,
           z,
           val,
-        );
+        );*/
       }
     }
   }
 };
 
-function strokeInBrickmap(brickMap: BrickMap, x1: number, y1: number, x2: number, y2: number) {
+function strokeInBrickmap(x1: number, y1: number, x2: number, y2: number) {
   let pt1x = 512 + Math.round(x1);
   let pt1y = 512 + Math.round(y1);
   let pt1z = 512;
@@ -152,7 +151,7 @@ function strokeInBrickmap(brickMap: BrickMap, x1: number, y1: number, x2: number
         let val = 128 - Math.floor(Math.max(-1, Math.min(1, a)) * 127);
         if (val < 1) val = 1; 
         if (val > 255) val = 255;
-        let oldVal = brickMap.get(k, j, i);
+        /*let oldVal = brickMap.get(k, j, i);
         if (oldVal != 0) {
           val = Math.max(val, oldVal);
         }
@@ -161,7 +160,7 @@ function strokeInBrickmap(brickMap: BrickMap, x1: number, y1: number, x2: number
           j,
           i,
           val,
-        );
+        );*/
       }
     }
   }
