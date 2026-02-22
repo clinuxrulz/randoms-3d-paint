@@ -248,6 +248,24 @@ export class AsyncSdfModel {
     return donePromise;
   }
 
+  async setCombineMode(mode: "Add" | "Subtract" | "Paint") {
+    let worker = this.ensureWorkerInitialized();
+    let doneResolve = () => {};
+    let donePromise = new Promise<void>((resolve) => doneResolve = resolve);
+    let doneId = this.registerCallback(() => {
+      this.unregisterCallback(doneId);
+      doneResolve();
+    });
+    worker.postMessage({
+      method: "setCombineMode",
+      params: {
+        doneId,
+        mode,
+      },
+    });
+    return donePromise;
+  }
+
   async setColour(colour: THREE.Color) {
     let worker = this.ensureWorkerInitialized();
     let doneResolve = () => {};
@@ -285,7 +303,7 @@ export class AsyncSdfModel {
     });
     return donePromise;
   }
-  
+
   initTexturesThreeJs(
     params: THREE.ShaderMaterialParameters,
   ): BrickMapTHREETextures {

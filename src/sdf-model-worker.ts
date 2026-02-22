@@ -40,6 +40,9 @@ self.addEventListener("message", (e) => {
     case "updateBrickMap":
       updateBrickMap(params);
       break;
+    case "setCombineMode":
+      setCombineMode(params);
+      break;
     case "setColour":
       setColour(params);
       break;
@@ -255,6 +258,16 @@ function unlock(params: {
       },
     },
   );
+}
+
+async function setCombineMode(params: { doneId: number, mode: "Add" | "Subtract" | "Paint" }) {
+  operations.combineMode = params.mode;
+  self.postMessage({
+    method: "callCallback",
+    params: {
+      id: params.doneId,
+    },
+  });
 }
 
 async function setColour(params: { doneId: number, r: number, g: number, b: number }) {
