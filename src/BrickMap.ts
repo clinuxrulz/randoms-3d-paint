@@ -57,25 +57,29 @@ export class BrickMap {
   }
 
   lock(): {
-    indirectionData: Uint8Array<ArrayBuffer>,
-    atlasData: Uint8Array<ArrayBuffer>,
-    colourData: Uint8Array<ArrayBuffer>,
+    indirectionData: ArrayBuffer,
+    atlasData: ArrayBuffer,
+    colourData: ArrayBuffer,
   } {
-    return {
-      indirectionData: this.indirectionData,
-      atlasData: this.atlasData,
-      colourData: this.colourData,
+    let result = {
+      indirectionData: this.indirectionData.buffer,
+      atlasData: this.atlasData.buffer,
+      colourData: this.colourData.buffer,
     };
+    this.indirectionData = new Uint8Array();
+    this.atlasData = new Uint8Array();
+    this.colourData = new Uint8Array();
+    return result;
   }
 
   unlock(params: {
-    indirectionData: Uint8Array<ArrayBuffer>,
-    atlasData: Uint8Array<ArrayBuffer>,
-    colourData: Uint8Array<ArrayBuffer>,
+    indirectionData: ArrayBuffer,
+    atlasData: ArrayBuffer,
+    colourData: ArrayBuffer,
   }) {
-    this.indirectionData = params.indirectionData;
-    this.atlasData = params.atlasData;
-    this.colourData = params.colourData;
+    this.indirectionData = new Uint8Array(params.indirectionData);
+    this.atlasData = new Uint8Array(params.atlasData);
+    this.colourData = new Uint8Array(params.colourData);
   }
 
   async load(version: number, reader: ReaderHelper) {

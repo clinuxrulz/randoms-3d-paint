@@ -1,3 +1,4 @@
+import * as THREE from "three";
 import "./BrickMap";
 import { BrickMap } from "./BrickMap";
 import { Operations } from "./operations";
@@ -10,6 +11,8 @@ let resumeLoad = () => {};
 
 let operations = new Operations();
 let brickMap = new BrickMap();
+
+let workerSelf = self as unknown as Worker;
 
 self.addEventListener("message", (e) => {
   let data = e.data;
@@ -30,6 +33,12 @@ self.addEventListener("message", (e) => {
       break;
     case "unlock":
       unlock(params);
+      break;
+    case "addOperation":
+      addOperation(params);
+      break;
+    case "updateBrickMap":
+      updateBrickMap(params);
       break;
   }
 });
@@ -133,6 +142,58 @@ async function save(params: {
   });
 }
 
+async function addOperation(params: {
+  doneId: number,
+  origin: { x: number, y: number, z: number },
+  orientation: { x: number, y: number, z: number, w: number },
+  operationShape: { type: string, [key: string]: any },
+  softness: number,
+}) {
+  operations.softness = params.softness;
+  const origin = new THREE.Vector3(params.origin.x, params.origin.y, params.origin.z);
+  const orientation = new THREE.Quaternion(params.orientation.x, params.orientation.y, params.orientation.z, params.orientation.w);
+  switch (params.operationShape.type) {
+    case "Ellipsoid":
+      operations.insertEllipsoid(
+        origin,
+        orientation,
+        new THREE.Vector3(params.operationShape.radius.x, params.operationShape.radius.y, params.operationShape.radius.z)
+      );
+      break;
+    case "Box":
+      operations.insertBox(
+        origin,
+        orientation,
+        new THREE.Vector3(params.operationShape.len.x, params.operationShape.len.y, params.operationShape.len.z)
+      );
+      break;
+    case "Capsule":
+      operations.insertCapsule(
+        origin,
+        orientation,
+        params.operationShape.lenX,
+        params.operationShape.radius
+      );
+      break;
+  }
+  self.postMessage({
+    method: "callCallback",
+    params: {
+      id: params.doneId,
+    },
+  });
+}
+
+async function updateBrickMap(params: { doneId: number, }) {
+  operations.updateBrickMap(brickMap);
+  self.postMessage({
+    method: "callCallback",
+    params: {
+      id: params.doneId,
+    },
+  });
+}
+
 function lock(params: { doneId: number, }) {
   let result = brickMap.lock();
   let dirtyAtlasBricks: "all" | number[];
@@ -151,7 +212,8 @@ function lock(params: { doneId: number, }) {
   brickMap.forceAllColoursDirty = false;
   brickMap.dirtyAtlasBricks.clear();
   brickMap.dirtyColourBricks.clear();
-  self.postMessage(
+  
+  workerSelf.postMessage(
     {
       method: "callCallback",
       params: {
@@ -163,7 +225,6 @@ function lock(params: { doneId: number, }) {
         },
       },
     },
-    "/",
     [
       result.indirectionData,
       result.atlasData,
@@ -173,14 +234,12 @@ function lock(params: { doneId: number, }) {
 }
 
 function unlock(params: {
-  buffers: {
-    indirectionData: Uint8Array<ArrayBuffer>,
-    atlasData: Uint8Array<ArrayBuffer>,
-    colourData: Uint8Array<ArrayBuffer>,
-  },
+  indirectionData: ArrayBuffer,
+  atlasData: ArrayBuffer,
+  colourData: ArrayBuffer,
   doneId: number,
 }) {
-  brickMap.unlock(params.buffers);
+  brickMap.unlock(params);
   self.postMessage(
     {
       method: "callCallback",
@@ -191,4 +250,3 @@ function unlock(params: {
     },
   );
 }
-
