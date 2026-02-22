@@ -173,7 +173,7 @@ export class AsyncSdfModel {
         method: "unlock",
         params,
       },
-      [ params.indirectionData, params.atlasData, params.colourData ],
+      [ params.indirectionData.buffer, params.atlasData.buffer, params.colourData.buffer ],
     );
     return donePromise;
   }
