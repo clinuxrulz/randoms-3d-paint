@@ -58,10 +58,10 @@ export class AsyncSdfModel {
     const resume = () => {
       worker.postMessage({ method: "resume", params: {}, });
     };
-    const onProgressId = this.registerCallback((params) => {
+    const onProgressId = this.registerCallback((eventData) => {
       resolveNext({
-        type: "progress",
-        params: { workDone: params.workDone, totalWork: params.totalWork, },
+        type: eventData.type,
+        params: { workDone: eventData.params.workDone, totalWork: eventData.params.totalWork, },
       });
     });
     const onDoneId = this.registerCallback((params) => {
@@ -91,11 +91,11 @@ export class AsyncSdfModel {
     }
   }
 
-  async save(writableStream: WritableStream): Promise<void> {
+  async save(): Promise<ArrayBuffer> {
     let worker = this.ensureWorkerInitialized();
-    let onDoneResolve = () => {};
+    let onDoneResolve: (value: ArrayBuffer) => void = () => {};
     let onDoneReject = (reason: any) => {};
-    let onDonePromise = new Promise<void>((resolve, reject) => {
+    let onDonePromise = new Promise<ArrayBuffer>((resolve, reject) => {
       onDoneResolve = resolve;
       onDoneReject = reject;
     });
@@ -105,14 +105,14 @@ export class AsyncSdfModel {
         onDoneReject(new Error(params.result.message));
         return;
       }
-      onDoneResolve();
+      onDoneResolve(params.result.buffer);
     });
     worker.postMessage({
       method: "save",
       params: {
-        writableStream,
+        onDoneId,
       },
-    }, [ writableStream ]);
+    });
     return onDonePromise;
   }
 

@@ -159,36 +159,69 @@ async function load(params: {
       id: params.onDoneId,
       params: {
         type: "done",
+        result: { type: "Ok", value: null, },
       },
     },
   });
 }
 
-async function save(params: {
-  writableStream: WritableStream,
-  onDoneId: number,
-}) {
+async function save(params: { onDoneId: number }) {
   let version = 2;
   let versionBuffer = new Uint8Array([version & 0xFF, (version >> 8) & 0xFF]);
-  {
-    let writer = params.writableStream.getWriter();
-    await writer.write(versionBuffer);
-    writer.releaseLock();
+
+  // 1. Collect all uncompressed data into a single ArrayBuffer
+  const uncompressedParts: Uint8Array[] = [];
+  const fakeWriter: WritableStreamDefaultWriter<BufferSource> = {
+    async write(chunk: BufferSource) {
+      uncompressedParts.push(new Uint8Array(chunk)); // Ensure we copy the chunk
+    },
+    close: async () => {}, // No-op for fake writer
+    abort: async () => {}, // No-op for fake writer
+    releaseLock: () => {}, // No-op for fake writer
+    closed: Promise.resolve(),
+    ready: Promise.resolve(),
+  };
+
+  // Call operations.save with our fake writer to collect all uncompressed bytes
+  await operations.save(version, fakeWriter);
+  const uncompressedBlob = new Blob(uncompressedParts);
+  const uncompressedArrayBuffer = await uncompressedBlob.arrayBuffer();
+
+  // 2. Compress the single uncompressed ArrayBuffer
+  const cs = new CompressionStream("gzip");
+  const compressedWriter = cs.writable.getWriter();
+  
+  // Write the entire uncompressed buffer to the compression stream
+  compressedWriter.write(uncompressedArrayBuffer);
+  compressedWriter.close();
+
+  // Read the compressed data out of the compression stream
+  const compressedChunks: Uint8Array[] = [];
+  const compressedReader = cs.readable.getReader();
+  while (true) {
+    const { value, done } = await compressedReader.read();
+    if (done) break;
+    compressedChunks.push(value);
   }
-  let cs = new CompressionStream("gzip");
-  let csWriter = cs.writable.getWriter();
-  let savePromise = (async () => {
-    await operations.save(version, csWriter);
-    await csWriter.close();
-  })();
-  await cs.readable.pipeTo(params.writableStream);
-  await savePromise;
+
+  const compressedArrayBuffer = await new Blob(compressedChunks).arrayBuffer();
+
+  // 3. Combine version with compressed data
+  const finalBlob = new Blob([versionBuffer, compressedArrayBuffer]);
+  const finalArrayBuffer = await finalBlob.arrayBuffer();
+
   self.postMessage({
     method: "callCallback",
     params: {
       id: params.onDoneId,
+      params: {
+        result: {
+          type: "Ok",
+          buffer: finalArrayBuffer,
+        },
+      },
     },
-  });
+  }, [finalArrayBuffer]); // Transfer the final ArrayBuffer
 }
 
 async function addOperation(params: {

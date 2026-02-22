@@ -267,7 +267,9 @@ const App: Component = () => {
     const fileHandle = await navigator.storage.getDirectory();
     const file = await fileHandle.getFileHandle("quicksave.dat", { create: true });
     const writable = await file.createWritable();
-    await model.save(writable);
+    let data = await model.save();
+    await writable.write(data);
+    await writable.close();
   };
   let load = async (file: File) => {
     const readable = file.stream();
@@ -293,7 +295,8 @@ const App: Component = () => {
       suggestedName: filename,
     });
     const writable = await fileHandle.createWritable();
-    await model.save(writable);
+    let data = await model.save();
+    await writable.write(data);
     await writable.close();
   };
   let march_ = async () => {
