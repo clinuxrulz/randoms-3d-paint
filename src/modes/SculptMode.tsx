@@ -29,8 +29,8 @@ export class SculptMode implements Mode {
       params.screenCoordsToRay(pointerPos, result);
       return result;
     });
-    let [ pointUnderRay, { refetch: refetchPointUnderRay }, ] = createResource(async () => {
-      let ray2 = ray();
+    let [ pointUnderRay, { refetch: refetchPointUnderRay }, ] = createResource(ray, async (ray2) => {
+      //let ray2 = ray();
       if (ray2 == undefined) {
         return undefined;
       }
@@ -44,68 +44,64 @@ export class SculptMode implements Mode {
         .add(ray2.origin);
       return pt;
     });
+    let lastPt: THREE.Vector3 | undefined = undefined;
     createComputed(on(
       params.pointerDown,
       (pointerDown) => {
         if (!pointerDown) {
           return;
         }
-        let hasPointUnderRay = createMemo(() => pointUnderRay() != undefined);
+        onCleanup(() => lastPt = undefined);
         createComputed(on(
-          hasPointUnderRay,
-          (hasPointUnderRay) => {
-            if (!hasPointUnderRay) {
+          pointUnderRay,
+          (pointUnderRay) => {
+            if (pointUnderRay == undefined) {
               return;
             }
-            let pointUnderRay2 = pointUnderRay as Accessor<NonNullable<ReturnType<typeof pointUnderRay>>>;
-            if (state.isNegativeBrush) {
-              params.model.setCombineMode("Subtract");
+            if (lastPt == undefined) {
+              if (state.isNegativeBrush) {
+                params.model.setCombineMode("Subtract");
+              } else {
+                params.model.setCombineMode("Add");
+              }
+              params.model.setSoftness(state.softness * state.brushSize * 10.0);
+              params.model.addOperation({
+                operationShape: {
+                  type: "Ellipsoid",
+                  radius: new THREE.Vector3().addScalar(0.5 * (state.brushSize - 4.0*state.softness) * 10.0),
+                },
+                origin: pointUnderRay,
+                orientation: new THREE.Quaternion(),
+                softness: state.softness * state.brushSize * 10.0,
+              });
+              params.model.setSoftness(0.0);
+              params.updateSdf();
+              params.model.setCombineMode("Add");
             } else {
+              if (lastPt.distanceTo(pointUnderRay) < 15.0) {
+                return;
+              }
+              if (state.isNegativeBrush) {
+                params.model.setCombineMode("Subtract");
+              } else {
+                params.model.setCombineMode("Add");
+              }
+              params.model.setSoftness(state.softness * state.brushSize * 10.0);
+              params.model.addOperation({
+                operationShape: {
+                  type: "Capsule",
+                  lenX: lastPt.distanceTo(pointUnderRay),
+                  radius: 0.5 * (state.brushSize - 4.0*state.softness) * 10.0,
+                },
+                origin: lastPt.clone().lerp(pointUnderRay, 0.5),
+                orientation: new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(1, 0, 0), pointUnderRay.clone().sub(lastPt).normalize()),
+                softness: state.softness * state.brushSize * 10.0,
+              });
+              params.model.setSoftness(0.0);
+              params.updateSdf();
               params.model.setCombineMode("Add");
             }
-            params.model.setSoftness(state.softness * state.brushSize * 10.0);
-            params.model.addOperation({
-              operationShape: {
-                type: "Ellipsoid",
-                radius: new THREE.Vector3().addScalar(0.5 * (state.brushSize - 4.0*state.softness) * 10.0),
-              },
-              origin: untrack(pointUnderRay2),
-              orientation: new THREE.Quaternion(),
-              softness: state.softness * state.brushSize * 10.0,
-            });
-            params.model.setSoftness(0.0);
-            params.updateSdf();
-            params.model.setCombineMode("Add");
-            let lastPt = untrack(pointUnderRay2);
-            createComputed(on(
-              pointUnderRay2,
-              (pointUnderRay) => {
-                if (lastPt.distanceTo(pointUnderRay) < 15.0) {
-                  return;
-                }
-                if (state.isNegativeBrush) {
-                  params.model.setCombineMode("Subtract");
-                } else {
-                  params.model.setCombineMode("Add");
-                }
-                params.model.setSoftness(state.softness * state.brushSize * 10.0);
-                params.model.addOperation({
-                  operationShape: {
-                    type: "Capsule",
-                    lenX: lastPt.distanceTo(pointUnderRay),
-                    radius: 0.5 * (state.brushSize - 4.0*state.softness) * 10.0,
-                  },
-                  origin: lastPt.clone().lerp(pointUnderRay, 0.5),
-                  orientation: new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(1, 0, 0), pointUnderRay.clone().sub(lastPt).normalize()),
-                  softness: state.softness * state.brushSize * 10.0,
-                });
-                params.model.setSoftness(0.0);
-                params.updateSdf();
-                params.model.setCombineMode("Add");
-                lastPt = pointUnderRay;
-              },
-              { defer: true, },
-            ));
+            lastPt = pointUnderRay;
           },
         ));
       },
@@ -201,7 +197,7 @@ export class SculptMode implements Mode {
         </button>
       </>
     );
-    let disableOrbit = createMemo(() => pointUnderRay() != undefined);
+    let disableOrbit = createMemo(() => true || pointUnderRay() != undefined);
     let overlayObject3D = createMemo(() => {
       let pt = pointUnderRay();
       if (pt == undefined) {
