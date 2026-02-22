@@ -178,7 +178,7 @@ async function save(params: {
   let cs = new CompressionStream("gzip");
   let csWriter = cs.writable.getWriter();
   let savePromise = (async () => {
-    operations.save(version, csWriter);
+    await operations.save(version, csWriter);
     await csWriter.close();
   })();
   await cs.readable.pipeTo(params.writableStream);

@@ -77,6 +77,15 @@ const App: Component = () => {
   });
 
   let model = new AsyncSdfModel();
+  createComputed(on(
+    currentColour,
+    (colour) => {
+      if (colour == undefined) {
+        return;
+      }
+      model.setColour(colour);
+    }
+  ));
 
   let [ rendererViewController, setRendererViewController, ] = createSignal<RendererViewController>();
   let setMode = (mode: { new(modeParams: ModeParams): Mode, }) => setState("mkMode", () => mode);
@@ -259,7 +268,6 @@ const App: Component = () => {
     const file = await fileHandle.getFileHandle("quicksave.dat", { create: true });
     const writable = await file.createWritable();
     await model.save(writable);
-    await writable.close();
   };
   let load = async (file: File) => {
     const readable = file.stream();

@@ -112,7 +112,7 @@ export class AsyncSdfModel {
       params: {
         writableStream,
       },
-    });
+    }, [ writableStream ]);
     return onDonePromise;
   }
 
