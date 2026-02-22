@@ -40,6 +40,12 @@ self.addEventListener("message", (e) => {
     case "updateBrickMap":
       updateBrickMap(params);
       break;
+    case "setColour":
+      setColour(params);
+      break;
+    case "setSoftness":
+      setSoftness(params);
+      break;
   }
 });
 
@@ -249,4 +255,24 @@ function unlock(params: {
       },
     },
   );
+}
+
+async function setColour(params: { doneId: number, r: number, g: number, b: number }) {
+  operations.colour.setRGB(params.r, params.g, params.b);
+  self.postMessage({
+    method: "callCallback",
+    params: {
+      id: params.doneId,
+    },
+  });
+}
+
+async function setSoftness(params: { doneId: number, softness: number }) {
+  operations.softness = params.softness;
+  self.postMessage({
+    method: "callCallback",
+    params: {
+      id: params.doneId,
+    },
+  });
 }

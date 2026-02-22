@@ -248,6 +248,44 @@ export class AsyncSdfModel {
     return donePromise;
   }
 
+  async setColour(colour: THREE.Color) {
+    let worker = this.ensureWorkerInitialized();
+    let doneResolve = () => {};
+    let donePromise = new Promise<void>((resolve) => doneResolve = resolve);
+    let doneId = this.registerCallback(() => {
+      this.unregisterCallback(doneId);
+      doneResolve();
+    });
+    worker.postMessage({
+      method: "setColour",
+      params: {
+        doneId,
+        r: colour.r,
+        g: colour.g,
+        b: colour.b,
+      },
+    });
+    return donePromise;
+  }
+
+  async setSoftness(softness: number) {
+    let worker = this.ensureWorkerInitialized();
+    let doneResolve = () => {};
+    let donePromise = new Promise<void>((resolve) => doneResolve = resolve);
+    let doneId = this.registerCallback(() => {
+      this.unregisterCallback(doneId);
+      doneResolve();
+    });
+    worker.postMessage({
+      method: "setSoftness",
+      params: {
+        doneId,
+        softness,
+      },
+    });
+    return donePromise;
+  }
+  
   initTexturesThreeJs(
     params: THREE.ShaderMaterialParameters,
   ): BrickMapTHREETextures {
