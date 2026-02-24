@@ -92,6 +92,14 @@ export class AsyncSdfModel {
     }
   }
 
+  async resume() {
+    let worker = this.ensureWorkerInitialized();
+    worker.postMessage({
+      method: "resume",
+      params: {},
+    });
+  }
+
   async save(writableStream: WritableStream): Promise<void> {
     let worker = this.ensureWorkerInitialized();
 
@@ -620,4 +628,3 @@ export class AsyncSdfModel {
     renderer.state.reset();
   }
 }
-

@@ -259,7 +259,12 @@ const App: Component = () => {
     const readable = file.stream();
     for await (const progress of model.load(readable)) {
       console.log(progress);
+      let controller = rendererViewController();
+      await controller?.onBrickMapChanged();
+      await controller?.onBrickMapPaintChanged();
+      model.resume();
     }
+    // Final update after load completes, in case some updates were missed or worker finished without signalling resume.
     modeParams.updateSdf();
     modeParams.updatePaint();
   };
@@ -273,7 +278,12 @@ const App: Component = () => {
     const readable = file.stream();
     for await (const progress of model.load(readable)) {
       console.log(progress);
+      let controller = rendererViewController();
+      controller?.onBrickMapChanged();
+      controller?.onBrickMapPaintChanged();
+      model.resume();
     }
+    // Final update after load completes, in case some updates were missed or worker finished without signalling resume.
     modeParams.updateSdf();
     modeParams.updatePaint();
   };

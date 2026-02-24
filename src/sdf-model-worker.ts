@@ -4,7 +4,7 @@ import { BrickMap } from "./BrickMap";
 import { Operations } from "./operations";
 import { ReaderHelper } from "./ReaderHelper";
 
-const DELAY_BETWEEN_PROGRESS_UPDATE = 500;
+const DELAY_BETWEEN_PROGRESS_UPDATE = 100;
 
 let isLoading = false;
 let resumeLoad = () => {};
@@ -138,6 +138,7 @@ async function load(params: {
   for await (let progress of operations.updateBrickMapAsyncGen(brickMap)) {
     let time = performance.now();
     if (time - lastTime >= DELAY_BETWEEN_PROGRESS_UPDATE) {
+      lastTime = time;
       self.postMessage({
         method: "callCallback",
         params: {
