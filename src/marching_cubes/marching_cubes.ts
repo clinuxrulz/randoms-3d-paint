@@ -1,7 +1,7 @@
 import * as THREE from "three";
 import { edgeCorners, edges, triangleTable } from "./tables";
 
-export type Sdf = (x: number, y: number, z: number) => number;
+export type Sdf = (x: number, y: number, z: number) => Promise<number>;
 
 export function pointsAndTriangleIndicesToGeometry(params: {
   /**
@@ -22,7 +22,7 @@ export function pointsAndTriangleIndicesToGeometry(params: {
   return geometry;
 }
 
-export function march(params: {
+export async function march(params: {
   sdf: Sdf,
   minX: number,
   maxX: number,
@@ -32,7 +32,7 @@ export function march(params: {
   maxZ: number,
   cubeSize: number,
   interpolate: boolean,
-}): {
+}): Promise<{
   /**
    * [x0, y0, z0, x1, y1, z1, x2, y2, z2, ...]
    */
@@ -41,7 +41,7 @@ export function march(params: {
    * [t0v1Idx, t0v2Idx, t0v3Idx, t1v1Idx, t1v2Idx, t1v3Idx, ...]
    */
   triangles: number[],
-} {
+}> {
   let numCubesX = Math.ceil((params.maxX - params.minX) / params.cubeSize);
   let numCubesY = Math.ceil((params.maxY - params.minY) / params.cubeSize);
   let numCubesZ = Math.ceil((params.maxZ - params.minZ) / params.cubeSize);
@@ -85,14 +85,14 @@ export function march(params: {
       atMinZ = useMinZ;
       for (let iz = 0; iz < numCubesZ; ++iz, atMinZ += params.cubeSize) {
         let atMaxZ = atMinZ + params.cubeSize;
-        cornerValues[0] = sdf(atMinX, atMinY, atMinZ);
-        cornerValues[1] = sdf(atMaxX, atMinY, atMinZ);
-        cornerValues[2] = sdf(atMaxX, atMinY, atMaxZ);
-        cornerValues[3] = sdf(atMinX, atMinY, atMaxZ);
-        cornerValues[4] = sdf(atMinX, atMaxY, atMinZ);
-        cornerValues[5] = sdf(atMaxX, atMaxY, atMinZ);
-        cornerValues[6] = sdf(atMaxX, atMaxY, atMaxZ);
-        cornerValues[7] = sdf(atMinX, atMaxY, atMaxZ);
+        cornerValues[0] = await sdf(atMinX, atMinY, atMinZ);
+        cornerValues[1] = await sdf(atMaxX, atMinY, atMinZ);
+        cornerValues[2] = await sdf(atMaxX, atMinY, atMaxZ);
+        cornerValues[3] = await sdf(atMinX, atMinY, atMaxZ);
+        cornerValues[4] = await sdf(atMinX, atMaxY, atMinZ);
+        cornerValues[5] = await sdf(atMaxX, atMaxY, atMinZ);
+        cornerValues[6] = await sdf(atMaxX, atMaxY, atMaxZ);
+        cornerValues[7] = await sdf(atMinX, atMaxY, atMaxZ);
         let cubeIndex = 0;
         for (let i = 0, a = 1; i < 8; ++i, a <<= 1) {
           if (cornerValues[i] < 0.0) {

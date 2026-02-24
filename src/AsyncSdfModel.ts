@@ -1,7 +1,8 @@
 import * as THREE from "three";
-import { Operation } from "./operations";
+import { Operation, OperationShape } from "./operations";
 import SdfModelWorker from "./sdf-model-worker?worker";
 import { ATLAS_RES, BRICK_P_RES, BrickMapTHREETextures, BRICKS_PER_RES, GRID_RES } from "./BrickMap";
+import { IndirectStorageBufferAttribute } from "three/webgpu";
 
 export class AsyncSdfModel {
   private worker: Worker | undefined = undefined;
@@ -58,10 +59,10 @@ export class AsyncSdfModel {
     const resume = () => {
       worker.postMessage({ method: "resume", params: {}, });
     };
-    const onProgressId = this.registerCallback((params) => {
+    const onProgressId = this.registerCallback((eventData) => {
       resolveNext({
-        type: "progress",
-        params: { workDone: params.workDone, totalWork: params.totalWork, },
+        type: eventData.type,
+        params: { workDone: eventData.params.workDone, totalWork: eventData.params.totalWork, },
       });
     });
     const onDoneId = this.registerCallback((params) => {
@@ -93,12 +94,17 @@ export class AsyncSdfModel {
 
   async save(writableStream: WritableStream): Promise<void> {
     let worker = this.ensureWorkerInitialized();
-    let onDoneResolve = () => {};
+
+    const { readable, writable } = new TransformStream();
+    let idPipeDone = readable.pipeTo(writableStream);
+
+    let onDoneResolve: () => void = () => {};
     let onDoneReject = (reason: any) => {};
     let onDonePromise = new Promise<void>((resolve, reject) => {
       onDoneResolve = resolve;
       onDoneReject = reject;
     });
+
     let onDoneId = this.registerCallback((params) => {
       this.unregisterCallback(onDoneId);
       if (params.result.type == "Err") {
@@ -107,13 +113,19 @@ export class AsyncSdfModel {
       }
       onDoneResolve();
     });
-    worker.postMessage({
-      method: "save",
-      params: {
-        writableStream,
+
+    worker.postMessage(
+      {
+        method: "save",
+        params: {
+          onDoneId,
+          writableStream: writable,
+        },
       },
-    });
-    return onDonePromise;
+      [writable]
+    );
+
+    await Promise.all([onDonePromise, idPipeDone]);
   }
 
   async lock(): Promise<{
@@ -140,6 +152,9 @@ export class AsyncSdfModel {
     }>((resolve) => doneResolve = resolve);
     let doneId = this.registerCallback((params) => {
       this.unregisterCallback(doneId);
+      params.indirectionData = new Uint8Array(params.indirectionData);
+      params.atlasData = new Uint8Array(params.atlasData);
+      params.colourData = new Uint8Array(params.colourData);
       doneResolve(params);
     });
     worker.postMessage({
@@ -163,17 +178,29 @@ export class AsyncSdfModel {
       this.unregisterCallback(doneId);
       doneResolve();
     });
+    let indirectionData = params.indirectionData.buffer;
+    let atlasData = params.atlasData.buffer;
+    let colourData = params.colourData.buffer;
     worker.postMessage(
       {
         method: "unlock",
-        params,
+        params: {
+          indirectionData,
+          atlasData,
+          colourData,
+        },
       },
-      [ params.indirectionData, params.atlasData, params.colourData ],
+      [ indirectionData, atlasData, colourData, ],
     );
     return donePromise;
   }
 
-  async addOperation(operation: Operation) {
+  async addOperation(operation: {
+    origin: THREE.Vector3,
+    orientation: THREE.Quaternion,
+    operationShape: OperationShape,
+    softness: number,
+  }) {
     let worker = this.ensureWorkerInitialized();
     let doneResolve = () => {};
     let donePromise = new Promise<void>((resolve) => doneResolve = resolve);
@@ -241,6 +268,111 @@ export class AsyncSdfModel {
     });
     worker.postMessage({
       method: "updateBrickMap",
+      params: {
+        doneId,
+      },
+    });
+    return donePromise;
+  }
+
+  async setCombineMode(mode: "Add" | "Subtract" | "Paint") {
+    let worker = this.ensureWorkerInitialized();
+    let doneResolve = () => {};
+    let donePromise = new Promise<void>((resolve) => doneResolve = resolve);
+    let doneId = this.registerCallback(() => {
+      this.unregisterCallback(doneId);
+      doneResolve();
+    });
+    worker.postMessage({
+      method: "setCombineMode",
+      params: {
+        doneId,
+        mode,
+      },
+    });
+    return donePromise;
+  }
+
+  async setColour(colour: THREE.Color) {
+    let worker = this.ensureWorkerInitialized();
+    let doneResolve = () => {};
+    let donePromise = new Promise<void>((resolve) => doneResolve = resolve);
+    let doneId = this.registerCallback(() => {
+      this.unregisterCallback(doneId);
+      doneResolve();
+    });
+    worker.postMessage({
+      method: "setColour",
+      params: {
+        doneId,
+        r: colour.r,
+        g: colour.g,
+        b: colour.b,
+      },
+    });
+    return donePromise;
+  }
+
+  async setSoftness(softness: number) {
+    let worker = this.ensureWorkerInitialized();
+    let doneResolve = () => {};
+    let donePromise = new Promise<void>((resolve) => doneResolve = resolve);
+    let doneId = this.registerCallback(() => {
+      this.unregisterCallback(doneId);
+      doneResolve();
+    });
+    worker.postMessage({
+      method: "setSoftness",
+      params: {
+        doneId,
+        softness,
+      },
+    });
+    return donePromise;
+  }
+
+  async march(ro: THREE.Vector3, rd: THREE.Vector3): Promise<{
+    hit: boolean,
+    t: [number],
+  }> {
+    let worker = this.ensureWorkerInitialized();
+    let doneResolve: (params: {
+      hit: boolean,
+      t: [number],
+    }) => void = () => {};
+    let donePromise = new Promise<{
+      hit: boolean,
+      t: [number],
+    }>((resolve) => doneResolve = resolve);
+    let doneId = this.registerCallback((params) => {
+      this.unregisterCallback(doneId);
+      doneResolve(params);
+    });
+    worker.postMessage({
+      method: "march",
+      params: {
+        doneId,
+        ro: { x: ro.x, y: ro.y, z: ro.z },
+        rd: { x: rd.x, y: rd.y, z: rd.z },
+      },
+    });
+    return donePromise;
+  }
+
+  async writeShaderCode(): Promise<string> {
+    let worker = this.ensureWorkerInitialized();
+    let doneResolve: (params: {
+      code: string,
+    }) => void = () => {};
+    let donePromise = new Promise<string>((resolve) => {
+      doneResolve = (params) => resolve(params.code);
+    });
+    let doneId = this.registerCallback((params) => {
+      this.unregisterCallback(doneId);
+      doneResolve(params);
+    });
+    worker.postMessage({
+      method: "writeShaderCode",
       params: {
         doneId,
       },
@@ -365,6 +497,7 @@ export class AsyncSdfModel {
         textures.aTex.needsUpdate = true;
         return;
       }
+      gl.activeTexture(gl.TEXTURE0);
       gl.bindTexture(gl.TEXTURE_3D, (textureProperties as any).__webglTexture);
       gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
       gl.pixelStorei(gl.UNPACK_ROW_LENGTH, 0);
@@ -413,6 +546,7 @@ export class AsyncSdfModel {
       dirtyColourBricks: "all" | number[],
     }
   ) {
+    textures.cTex.image.data = lockResult.colourData;
     const gl = renderer.getContext() as WebGL2RenderingContext;
     let textureProperties = renderer.properties.get(textures.cTex);
     if (lockResult.dirtyColourBricks == "all") {
@@ -423,6 +557,7 @@ export class AsyncSdfModel {
       textures.cTex.needsUpdate = true;
       return;
     }
+    gl.activeTexture(gl.TEXTURE0);
     gl.bindTexture(gl.TEXTURE_3D, (textureProperties as any).__webglTexture);
     gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
     gl.pixelStorei(gl.UNPACK_ROW_LENGTH, 0);

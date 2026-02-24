@@ -1,6 +1,7 @@
-import { Accessor, batch, Component, createComputed, createSignal, on, onCleanup, onMount, untrack } from "solid-js";
+import { Accessor, batch, Component, createComputed, createMemo, createResource, createSignal, on, onCleanup, onMount, Show, untrack } from "solid-js";
 import * as THREE from "three";
-import { BrickMap } from "./BrickMap";
+import { AsyncSdfModel } from "./AsyncSdfModel";
+
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { FullScreenQuad } from 'three/examples/jsm/postprocessing/Pass.js';
 import { TransformControls } from 'three/addons/controls/TransformControls.js';
@@ -9,9 +10,9 @@ const FOV_Y = 50.0;
 
 export type RendererViewController = {
   canvasSize: Accessor<THREE.Vector2 | undefined>,
-  onBrickMapChanged: () => void,
-  onBrickMapPaintChanged: () => void,
-  rerender: () => void,
+  onBrickMapChanged: () => Promise<void>,
+  onBrickMapPaintChanged: () => Promise<void>,
+  rerender: () => Promise<void>,
   moveTransform: () => void,
   rotateTransform: () => void,
   scaleTransform: () => void,
@@ -21,7 +22,7 @@ export type RendererViewController = {
 };
 
 const RendererView: Component<{
-  brickMap: BrickMap,
+  model: AsyncSdfModel,
   hideBrickMap: boolean,
   onDragingEvent: (isDraging: boolean) => void,
   onInit: (controller: RendererViewController) => void,
@@ -50,207 +51,280 @@ const RendererView: Component<{
     rimLight.position.set(0, -1, -1);
     scene.add(rimLight);
   }
-  let brickMapShaderCode = props.brickMap.writeShaderCode();
-  let fragmentShaderCode = `
-precision highp float;
-precision highp int;
-precision highp usampler3D;
-precision highp sampler3D;
+  let [brickMapShaderCode] = createResource(() => props.model.writeShaderCode());
 
-uniform vec2 resolution;
-uniform float uFocalLength;
-uniform mat4 viewMatrixInverse;
-uniform mat4 projectionMatrixInverse;
-uniform mat4 uCameraViewMatrix;
-uniform mat4 uCameraProjectionMatrix;
+  createComputed(() => {
+    const code = brickMapShaderCode();
+    if (!code) return;
+    console.log(
+      code
+        .split("\n")
+        .map((line, idx) => `${idx + 1}: ${line}`)
+        .join("\n")
+    );
+  });
 
-//out vec4 fragColour;
+  let material = createMemo(() => {
+    const code = brickMapShaderCode();
+    if (!code) return undefined;
+    let params: THREE.ShaderMaterialParameters = {
+      uniforms: {
+        resolution: { value: new THREE.Vector2(), },
+        uFocalLength: { value: 0.0, },
+        viewMatrixInverse: { value: new THREE.Matrix4(), },
+        projectionMatrixInverse: { value: new THREE.Matrix4(), },
+        uCameraViewMatrix: { value: new THREE.Matrix4() },
+        uCameraProjectionMatrix: { value: new THREE.Matrix4() },
+        cameraPosition: { value: new THREE.Vector3(), },
+      },
+      fragmentShader: `
+        precision highp float;
+        precision highp int;
+        precision highp usampler3D;
+        precision highp sampler3D;
 
-${brickMapShaderCode}
+        uniform vec2 resolution;
+        uniform float uFocalLength;
+        uniform mat4 viewMatrixInverse;
+        uniform mat4 projectionMatrixInverse;
+        uniform mat4 uCameraViewMatrix;
+        uniform mat4 uCameraProjectionMatrix;
 
-float map2(vec3 p) {
-  p += 512.0 * VOXEL_SIZE;
-  return abs(length(p - vec3(512.0*VOXEL_SIZE)) - 100.0 * VOXEL_SIZE);
-}
+        //out vec4 fragColour;
 
-const int MAX_STEPS = 1000;
-const float MIN_DIST = 1.0;
-const float MAX_DIST = 10000.0;
+        ${code}
 
-bool negativeMarch(vec3 ro, vec3 rd, out float t) {
-    t = 0.0;
-    for(int i = 0; i < MAX_STEPS; i++) {
-        vec3 p = ro + rd * t;
-        float d = -map(p, rd);
-        
-        if(d < MIN_DIST) {
-            return true;
+        float map2(vec3 p) {
+          p += 512.0 * VOXEL_SIZE;
+          return abs(length(p - vec3(512.0*VOXEL_SIZE)) - 100.0 * VOXEL_SIZE);
         }
-        
-        t += d;
-        
-        if(t > MAX_DIST) {
-            break;
+
+        const int MAX_STEPS = 1000;
+        const float MIN_DIST = 1.0;
+        const float MAX_DIST = 10000.0;
+
+        bool negativeMarch(vec3 ro, vec3 rd, out float t) {
+            t = 0.0;
+            for(int i = 0; i < MAX_STEPS; i++) {
+                vec3 p = ro + rd * t;
+                float d = -map(p, rd);
+                
+                if(d < MIN_DIST) {
+                    return true;
+                }
+                
+                t += d;
+                
+                if(t > MAX_DIST) {
+                    break;
+                }
+            }
+            return false;
         }
-    }
-    return false;
-}
 
-bool march(vec3 ro, vec3 rd, out float t, out bool negative) {
-    t = 0.0;
-    for(int i = 0; i < MAX_STEPS; i++) {
-        vec3 p = ro + rd * t;
-        float d = map(p, rd);
+        bool march(vec3 ro, vec3 rd, out float t, out bool negative) {
+            t = 0.0;
+            for(int i = 0; i < MAX_STEPS; i++) {
+                vec3 p = ro + rd * t;
+                float d = map(p, rd);
 
-        if (d < 0.0) {
-            negative = true;
-            return negativeMarch(ro, rd, t);
+                if (d < 0.0) {
+                    negative = true;
+                    return negativeMarch(ro, rd, t);
+                }
+                
+                if(d < MIN_DIST) {
+                    return true;
+                }
+                
+                t += d;
+                
+                if(t > MAX_DIST) {
+                    break;
+                }
+            }
+            return false;
         }
-        
-        if(d < MIN_DIST) {
-            return true;
+
+        vec3 normal(vec3 p) {
+            const float eps = 4.0;
+            const vec2 h = vec2(eps, 0);
+            const vec3 z = vec3(0.0);
+            return normalize(vec3(
+                map(p + h.xyy, z) - map(p - h.xyy, z),
+                map(p + h.yxy, z) - map(p - h.yxy, z),
+                map(p + h.yyx, z) - map(p - h.yyx, z)
+            ));
         }
-        
-        t += d;
-        
-        if(t > MAX_DIST) {
-            break;
+
+        vec3 calculateLighting(vec3 pos, vec3 normal, vec3 viewDir, vec3 baseColor) {
+            float hemi = 0.5 + 0.5 * normal.y;
+            vec3 ambient = mix(vec3(0.1, 0.1, 0.2), vec3(0.2, 0.15, 0.1), hemi);
+            vec3 keyDir = normalize(vec3(1.0, 1.0, 1.0));
+            vec3 fillDir = normalize(vec3(-1.0, 0.0, 1.0));
+            vec3 rimDir = normalize(vec3(0.0, -1.0, -1.0));
+            float key = max(dot(normal, keyDir), 0.0);
+            float fill = max(dot(normal, fillDir), 0.0) * 0.4;
+            float rim = max(dot(normal, rimDir), 0.0) * 0.3;
+            vec3 refl = reflect(-keyDir, normal);
+            float spec = pow(max(dot(refl, viewDir), 0.0), 32.0) * 0.5;
+            vec3 lighting = (ambient + (key + fill + rim) * 0.8) * baseColor + spec;
+            return lighting;
         }
-    }
-    return false;
-}
 
-vec3 normal(vec3 p) {
-    const float eps = 4.0;
-    const vec2 h = vec2(eps, 0);
-    const vec3 z = vec3(0.0);
-    return normalize(vec3(
-        map(p + h.xyy, z) - map(p - h.xyy, z),
-        map(p + h.yxy, z) - map(p - h.yxy, z),
-        map(p + h.yyx, z) - map(p - h.yyx, z)
-    ));
-}
+        void main(void) {
+          float fl = uFocalLength;
+          vec2 uv = gl_FragCoord.xy / resolution;
+          vec4 ndc = vec4(uv * 2.0 - 1.0, 1.0, 1.0);
+          vec4 viewPos = projectionMatrixInverse * ndc;
+          viewPos /= viewPos.w;
+          vec4 worldPos = viewMatrixInverse * viewPos;
+          vec3 ro = cameraPosition;
+          vec3 rd = normalize(worldPos.xyz - ro);
+          float t = 0.0;
+          bool negative = false;
+          bool hit = march(ro, rd, t, negative);
+          if (!hit) {
+            gl_FragColor = vec4(0.2, 0.2, 0.2, 1.0);
+            gl_FragDepth = 1.0; 
+            return;
+          }
+          vec3 p = ro + rd*t;
+          vec3 n = normal(p);
+          if (negative) {
+            n = -n;
+          }
+          float s = 0.8*dot(n,normalize(vec3(1,1,1))) + 0.2;
+          vec4 c = colour(p);
+          vec3 c2 = calculateLighting(p, n, rd, c.rgb);
+          c = vec4(c2, c.a);
+          gl_FragColor = c;
+          vec4 clipPos = uCameraProjectionMatrix * uCameraViewMatrix * vec4(p, 1.0);
+          float ndcDepth = clipPos.z / clipPos.w;
+          if (ndcDepth < -1.0 || ndcDepth > 1.0) {
+            ndcDepth = 1.0;
+          }
+          gl_FragDepth = (ndcDepth + 1.0) * 0.5;
+        }
+      `,
+      depthWrite: true,
+    };
+    props.model.initTexturesThreeJs(params);
+    return new THREE.ShaderMaterial(params);
+  });
 
-vec3 calculateLighting(vec3 pos, vec3 normal, vec3 viewDir, vec3 baseColor) {
-    float hemi = 0.5 + 0.5 * normal.y;
-    vec3 ambient = mix(vec3(0.1, 0.1, 0.2), vec3(0.2, 0.15, 0.1), hemi);
-    vec3 keyDir = normalize(vec3(1.0, 1.0, 1.0));
-    vec3 fillDir = normalize(vec3(-1.0, 0.0, 1.0));
-    vec3 rimDir = normalize(vec3(0.0, -1.0, -1.0));
-    float key = max(dot(normal, keyDir), 0.0);
-    float fill = max(dot(normal, fillDir), 0.0) * 0.4;
-    float rim = max(dot(normal, rimDir), 0.0) * 0.3;
-    vec3 refl = reflect(-keyDir, normal);
-    float spec = pow(max(dot(refl, viewDir), 0.0), 32.0) * 0.5;
-    vec3 lighting = (ambient + (key + fill + rim) * 0.8) * baseColor + spec;
-    return lighting;
-}
-
-void main(void) {
-  float fl = uFocalLength;
-  vec2 uv = gl_FragCoord.xy / resolution;
-  vec4 ndc = vec4(uv * 2.0 - 1.0, 1.0, 1.0);
-  vec4 viewPos = projectionMatrixInverse * ndc;
-  viewPos /= viewPos.w;
-  vec4 worldPos = viewMatrixInverse * viewPos;
-  vec3 ro = cameraPosition;
-  vec3 rd = normalize(worldPos.xyz - ro);
-  float t = 0.0;
-  bool negative = false;
-  bool hit = march(ro, rd, t, negative);
-  if (!hit) {
-    gl_FragColor = vec4(0.2, 0.2, 0.2, 1.0);
-    gl_FragDepth = 1.0; 
-    return;
-  }
-  vec3 p = ro + rd*t;
-  vec3 n = normal(p);
-  if (negative) {
-    n = -n;
-  }
-  float s = 0.8*dot(n,normalize(vec3(1,1,1))) + 0.2;
-  vec4 c = colour(p);
-  vec3 c2 = calculateLighting(p, n, rd, c.rgb);
-  c = vec4(c2, c.a);
-  gl_FragColor = c;
-  vec4 clipPos = uCameraProjectionMatrix * uCameraViewMatrix * vec4(p, 1.0);
-  float ndcDepth = clipPos.z / clipPos.w;
-  if (ndcDepth < -1.0 || ndcDepth > 1.0) {
-    ndcDepth = 1.0;
-  }
-  gl_FragDepth = (ndcDepth + 1.0) * 0.5;
-}
-`;
-  console.log(
-    fragmentShaderCode
-      .split("\n")
-      .map((line, idx) => `${idx+1}: ${line}`)
-      .join("\n")
-  );
-  let params: THREE.ShaderMaterialParameters = {
-    uniforms: {
-      resolution: { value: new THREE.Vector2(), },
-      uFocalLength: { value: 0.0, },
-      viewMatrixInverse: { value: new THREE.Matrix4(), },
-      projectionMatrixInverse: { value: new THREE.Matrix4(), },
-      uCameraViewMatrix: { value: new THREE.Matrix4() },
-      uCameraProjectionMatrix: { value: new THREE.Matrix4() },
-      cameraPosition: { value: new THREE.Vector3(), },
-    },
-    fragmentShader: fragmentShaderCode,
-    depthWrite: true,
-  };
-  let brickMapTextures = props.brickMap.initTexturesThreeJs(params);
-  let material = new THREE.ShaderMaterial(params);
-  let fullScreenQuad = new FullScreenQuad(material);
-  let rerender: () => void;
+  let fullScreenQuad = createMemo(() => {
+    const mat = material();
+    if (!mat) return undefined;
+    return new FullScreenQuad(mat);
+  });
+  
+  let rerender: () => Promise<void>;
   {
     let isRendering = false;
+    let renderResolvers: (() => void)[] = [];
     rerender = () => {
+      let resolve: () => void;
+      let promise = new Promise<void>(r => resolve = r);
+      renderResolvers.push(resolve!);
+
       if (isRendering) {
-        return;
+        return promise;
       }
       isRendering = true;
       requestAnimationFrame(() => {
+        const quad = fullScreenQuad();
+        const mat = material();
+        if (!quad || !mat) {
+          isRendering = false;
+          const resolvers = renderResolvers;
+          renderResolvers = [];
+          for (const r of resolvers) r();
+          return;
+        }
         let renderer2 = renderer();
         if (renderer2 == undefined) {
+          isRendering = false;
+          const resolvers = renderResolvers;
+          renderResolvers = [];
+          for (const r of resolvers) r();
           return;
         }
         let camera2 = camera();
         if (camera2 == undefined) {
+          isRendering = false;
+          const resolvers = renderResolvers;
+          renderResolvers = [];
+          for (const r of resolvers) r();
           return;
         }
         let oribitControls2 = orbitControls();
         if (oribitControls2 == undefined) {
+          isRendering = false;
+          const resolvers = renderResolvers;
+          renderResolvers = [];
+          for (const r of resolvers) r();
           return;
         }
         oribitControls2.update(); 
-        material.uniforms.viewMatrixInverse.value.copy(camera2.matrixWorld);
-        material.uniforms.projectionMatrixInverse.value.copy(camera2.projectionMatrixInverse);
-        material.uniforms.uCameraViewMatrix.value.copy(camera2.matrixWorldInverse);
-        material.uniforms.uCameraProjectionMatrix.value.copy(camera2.projectionMatrix);
-        material.uniforms.cameraPosition.value.copy(camera2.position);
+        mat.uniforms.viewMatrixInverse.value.copy(camera2.matrixWorld);
+        mat.uniforms.projectionMatrixInverse.value.copy(camera2.projectionMatrixInverse);
+        mat.uniforms.uCameraViewMatrix.value.copy(camera2.matrixWorldInverse);
+        mat.uniforms.uCameraProjectionMatrix.value.copy(camera2.projectionMatrix);
+        mat.uniforms.cameraPosition.value.copy(camera2.position);
         //renderer2.clearColor();
         renderer2.clearDepth();
         if (!props.hideBrickMap) {
-          fullScreenQuad.render(renderer2);
+          quad.render(renderer2);
         }
         renderer2.render(scene, camera2);
         isRendering = false;
+        const resolvers = renderResolvers;
+        renderResolvers = [];
+        for (const r of resolvers) r();
       });
+      return promise;
     };
   }
   let _screenCoordsToRay_tmpRaycaster = new THREE.Raycaster();
   let _screenCoordsToRay_tmpV2 = new THREE.Vector2();
   props.onInit({
     canvasSize,
-    onBrickMapChanged() {
-      props.brickMap.updateTexturesThreeJs(renderer()!, brickMapTextures);
-      rerender();
+    async onBrickMapChanged() {
+      const r = renderer();
+      const mat = material();
+      if (!r || !mat) return;
+      const textures = {
+        iTex: mat.uniforms.uIndirectionTex.value,
+        aTex: mat.uniforms.uAtlasTex.value,
+        cTex: mat.uniforms.uColourTex.value,
+      };
+      const result = await props.model.updateTextures({
+        renderer: r,
+        textures,
+        updateAtlas: true,
+        updateColours: false,
+      });
+      await rerender();
+      await result.onAfterRender();
     },
-    onBrickMapPaintChanged() {
-      props.brickMap.updatePaintThreeJs(renderer()!, brickMapTextures);
-      rerender();
+    async onBrickMapPaintChanged() {
+      const r = renderer();
+      const mat = material();
+      if (!r || !mat) return;
+      const textures = {
+        iTex: mat.uniforms.uIndirectionTex.value,
+        aTex: mat.uniforms.uAtlasTex.value,
+        cTex: mat.uniforms.uColourTex.value,
+      };
+      const result = await props.model.updateTextures({
+        renderer: r,
+        textures,
+        updateAtlas: false,
+        updateColours: true,
+      });
+      await rerender();
+      await result.onAfterRender();
     },
     rerender,
     moveTransform() {
@@ -303,6 +377,7 @@ void main(void) {
     },
     renderer,
   });
+  let updateSize: () => void;
   onMount(() => {
     let canvas2 = canvas();
     if (canvas2 == undefined) {
@@ -321,7 +396,9 @@ void main(void) {
     });
     renderer2.setPixelRatio(window.devicePixelRatio);
     renderer2.autoClear = false;
-    let updateSize = () => {
+    updateSize = () => {
+      const mat = material();
+      if (!mat) return;
       let rect = canvas2.getBoundingClientRect();
       setCanvasSize(new THREE.Vector2(rect.width, rect.height));
       camera2.aspect = rect.width / rect.height;
@@ -331,11 +408,11 @@ void main(void) {
       let focalLength = 0.5 * height / Math.tan(0.5 * FOV_Y * Math.PI / 180.0);
       let s = 1.0 / props.pixelSize;
       renderer2.setSize(s * rect.width, s * rect.height, false);
-      material.uniforms.resolution.value.set(
+      mat.uniforms.resolution.value.set(
         s * width,
         s * height,
       );
-      material.uniforms.uFocalLength.value = s * focalLength;
+      mat.uniforms.uFocalLength.value = s * focalLength;
       rerender();
     };
     let resizeObserver = new ResizeObserver(() => {
@@ -391,6 +468,15 @@ void main(void) {
     rerender();
   });
   createComputed(on(
+    material,
+    (mat) => {
+      if (mat != undefined) {
+        updateSize?.();
+        rerender();
+      }
+    }
+  ));
+  createComputed(on(
     () => props.overlayObject3D,
     (overlayObject3D) => {
       if (overlayObject3D == undefined) {
@@ -404,13 +490,15 @@ void main(void) {
     },
   ));
   return (
-    <canvas
-      ref={setCanvas}
-      style={{
-        width: "100%",
-        height: "100%",
-      }}
-    />
+    //<Show when={material()} fallback={<div>Loading...</div>}>
+      <canvas
+        ref={setCanvas}
+        style={{
+          width: "100%",
+          height: "100%",
+        }}
+      />
+    //</Show>
   );
 };
 

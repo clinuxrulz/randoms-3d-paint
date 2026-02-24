@@ -40,8 +40,57 @@ self.addEventListener("message", (e) => {
     case "updateBrickMap":
       updateBrickMap(params);
       break;
+    case "setCombineMode":
+      setCombineMode(params);
+      break;
+    case "setColour":
+      setColour(params);
+      break;
+    case "setSoftness":
+      setSoftness(params);
+      break;
+    case "march":
+      march(params);
+      break;
+    case "writeShaderCode":
+      writeShaderCode(params);
+      break;
   }
 });
+
+async function march(params: {
+  ro: { x: number, y: number, z: number },
+  rd: { x: number, y: number, z: number },
+  doneId: number,
+}) {
+  let ro = new THREE.Vector3(params.ro.x, params.ro.y, params.ro.z);
+  let rd = new THREE.Vector3(params.rd.x, params.rd.y, params.rd.z);
+  let t: [number] = [0];
+  let hit = brickMap.march(ro, rd, t);
+  self.postMessage({
+    method: "callCallback",
+    params: {
+      id: params.doneId,
+      params: {
+        hit,
+        t,
+      },
+    },
+  });
+}
+
+async function writeShaderCode(params: { doneId: number }) {
+  let code = brickMap.writeShaderCode();
+  self.postMessage({
+    method: "callCallback",
+    params: {
+      id: params.doneId,
+      params: {
+        code,
+      },
+    },
+  });
+}
 
 async function load(params: {
   readableStream: ReadableStream,
@@ -110,36 +159,51 @@ async function load(params: {
       id: params.onDoneId,
       params: {
         type: "done",
+        result: { type: "Ok", value: null, },
       },
     },
   });
 }
 
-async function save(params: {
-  writableStream: WritableStream,
-  onDoneId: number,
-}) {
+async function save(params: { onDoneId: number, writableStream: WritableStream }) {
   let version = 2;
-  let versionBuffer = new Uint8Array([version & 0xFF, (version >> 8) & 0xFF]);
-  {
-    let writer = params.writableStream.getWriter();
+  const writer = params.writableStream.getWriter();
+
+  try {
+    let versionBuffer = new Uint8Array([version & 0xFF, (version >> 8) & 0xFF]);
     await writer.write(versionBuffer);
     writer.releaseLock();
+
+     const compressionStream = new CompressionStream("gzip");
+    const compressedWriter = compressionStream.writable.getWriter();
+    const compressionDone = compressionStream.readable.pipeTo(params.writableStream);
+
+    await operations.save(version, compressedWriter);
+
+    await compressedWriter.close();
+
+    self.postMessage({
+      method: "callCallback",
+      params: {
+        id: params.onDoneId,
+        params: {
+          result: { type: "Ok" },
+        },
+      },
+    });
+  } catch (e: any) {
+    console.error("Error during save in worker:", e);
+    await writer.abort(e);
+    self.postMessage({
+      method: "callCallback",
+      params: {
+        id: params.onDoneId,
+        params: {
+          result: { type: "Err", message: e.message || "Unknown error during save" },
+        },
+      },
+    });
   }
-  let cs = new CompressionStream("gzip");
-  let csWriter = cs.writable.getWriter();
-  let savePromise = (async () => {
-    operations.save(version, csWriter);
-    await csWriter.close();
-  })();
-  await cs.readable.pipeTo(params.writableStream);
-  await savePromise;
-  self.postMessage({
-    method: "callCallback",
-    params: {
-      id: params.onDoneId,
-    },
-  });
 }
 
 async function addOperation(params: {
@@ -249,4 +313,34 @@ function unlock(params: {
       },
     },
   );
+}
+
+async function setCombineMode(params: { doneId: number, mode: "Add" | "Subtract" | "Paint" }) {
+  operations.combineMode = params.mode;
+  self.postMessage({
+    method: "callCallback",
+    params: {
+      id: params.doneId,
+    },
+  });
+}
+
+async function setColour(params: { doneId: number, r: number, g: number, b: number }) {
+  operations.colour.setRGB(params.r, params.g, params.b);
+  self.postMessage({
+    method: "callCallback",
+    params: {
+      id: params.doneId,
+    },
+  });
+}
+
+async function setSoftness(params: { doneId: number, softness: number }) {
+  operations.softness = params.softness;
+  self.postMessage({
+    method: "callCallback",
+    params: {
+      id: params.doneId,
+    },
+  });
 }

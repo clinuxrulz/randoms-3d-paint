@@ -43,7 +43,7 @@ export class ReaderHelper {
 
   async readU16(): Promise<number> {
     await this.read(this.readBuffer, 0, 2);
-    return this.readBuffer[0] | (this.readBuffer[1] << 8);
+    return this.dataView.getUint16(0, true);
   }
 
   async readU32(): Promise<number> {

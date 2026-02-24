@@ -372,24 +372,30 @@ async function saveOperation(version: number, operation: Operation, writer: Writ
   dataView.setFloat32(1, operation.origin.x, true);
   dataView.setFloat32(5, operation.origin.y, true);
   dataView.setFloat32(9, operation.origin.z, true);
-  dataView.setFloat32(12+1, operation.orientation.x, true);
+  dataView.setFloat32(13, operation.orientation.x, true);
   dataView.setFloat32(17, operation.orientation.y, true);
   dataView.setFloat32(21, operation.orientation.z, true);
   dataView.setFloat32(25, operation.orientation.w, true);
   await writer.write(buffer.subarray(0, 29));
   await saveOperationShape(version, operation.operationShape, writer);
-  dataView.setFloat32(0, operation.softness, true);
-  await writer.write(buffer.subarray(0, 4));
+
+  let softnessBuffer = new Uint8Array(4);
+  let softnessDataView = new DataView(softnessBuffer.buffer);
+  softnessDataView.setFloat32(0, operation.softness, true);
+  await writer.write(softnessBuffer);
+
   if (operation.combinedType == "Paint") {
+    let colourBuffer = new Uint8Array(4);
+    let colourDataView = new DataView(colourBuffer.buffer);
     let red = Math.max(0, Math.min(255, Math.round(operation.colour.r * 255)));
     let green = Math.max(0, Math.min(255, Math.round(operation.colour.g * 255)));
     let blue = Math.max(0, Math.min(255, Math.round(operation.colour.b * 255)));
     let opacity = Math.max(0, Math.min(255, Math.round(operation.opacity * 255)));
-    dataView.setUint8(0, red);
-    dataView.setUint8(1, green);
-    dataView.setUint8(2, blue);
-    dataView.setUint8(3, opacity);
-    await writer.write(buffer.subarray(0, 4));
+    colourDataView.setUint8(0, red);
+    colourDataView.setUint8(1, green);
+    colourDataView.setUint8(2, blue);
+    colourDataView.setUint8(3, opacity);
+    await writer.write(colourBuffer);
   }
 }
 
