@@ -166,18 +166,12 @@ export class AsyncSdfModel {
     return donePromise;
   }
 
-  async unlock(params: {
+  unlock(params: {
     indirectionData: Uint8Array<ArrayBuffer>,
     atlasData: Uint8Array<ArrayBuffer>,
     colourData: Uint8Array<ArrayBuffer>,
   }) {
     let worker = this.ensureWorkerInitialized();
-    let doneResolve = () => {};
-    let donePromise = new Promise<void>((resolve) => doneResolve = resolve);
-    let doneId = this.registerCallback(() => {
-      this.unregisterCallback(doneId);
-      doneResolve();
-    });
     let indirectionData = params.indirectionData.buffer;
     let atlasData = params.atlasData.buffer;
     let colourData = params.colourData.buffer;
@@ -192,8 +186,13 @@ export class AsyncSdfModel {
       },
       [ indirectionData, atlasData, colourData, ],
     );
-    return donePromise;
   }
+
+  private isLocked = false;
+  private operationQueue: {
+    operation: any,
+    resolve: () => void,
+  }[] = [];
 
   async addOperation(operation: {
     origin: THREE.Vector3,
@@ -201,6 +200,12 @@ export class AsyncSdfModel {
     operationShape: OperationShape,
     softness: number,
   }) {
+    if (this.isLocked) {
+      return new Promise<void>(resolve => {
+        this.operationQueue.push({ operation, resolve });
+      });
+    }
+
     let worker = this.ensureWorkerInitialized();
     let doneResolve = () => {};
     let donePromise = new Promise<void>((resolve) => doneResolve = resolve);
@@ -453,6 +458,7 @@ export class AsyncSdfModel {
   }): Promise<{
     onAfterRender: () => Promise<void>,
   }> {
+    this.isLocked = true;
     let lockResult = await this.lock();
     if (params.updateAtlas) {
       this.updateTexturesThreeJs(
@@ -469,9 +475,24 @@ export class AsyncSdfModel {
       );
     }
     return {
-      onAfterRender: () => this.unlock(lockResult),
+      onAfterRender: async () => {
+        this.unlock(lockResult);
+        this.isLocked = false;
+        
+        const queueToProcess = this.operationQueue;
+        this.operationQueue = [];
+
+        const promises = queueToProcess.map(item => {
+          return this.addOperation(item.operation).then(() => {
+            item.resolve();
+          });
+        });
+
+        await Promise.all(promises);
+      },
     };
   }
+
 
   private tempAtlasDataBuffer = new Uint8Array(BRICK_P_RES ** 3);
   updateTexturesThreeJs(

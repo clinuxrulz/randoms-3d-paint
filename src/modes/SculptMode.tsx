@@ -94,7 +94,6 @@ export class SculptMode implements Mode {
               });
               params.model.setSoftness(0.0);
               params.updateSdf();
-              params.model.setCombineMode("Add");
               lastPt = nextPt;
             } else {
               if (lastPt.distanceTo(nextPt) < 15.0) {
@@ -118,7 +117,6 @@ export class SculptMode implements Mode {
               });
               params.model.setSoftness(0.0);
               params.updateSdf();
-              params.model.setCombineMode("Add");
               lastPt = nextPt;
             }
           },

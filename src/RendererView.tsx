@@ -288,43 +288,62 @@ const RendererView: Component<{
   }
   let _screenCoordsToRay_tmpRaycaster = new THREE.Raycaster();
   let _screenCoordsToRay_tmpV2 = new THREE.Vector2();
+  let brickMapUpdateInProgress = false;
   props.onInit({
     canvasSize,
     async onBrickMapChanged() {
-      const r = renderer();
-      const mat = material();
-      if (!r || !mat) return;
-      const textures = {
-        iTex: mat.uniforms.uIndirectionTex.value,
-        aTex: mat.uniforms.uAtlasTex.value,
-        cTex: mat.uniforms.uColourTex.value,
-      };
-      const result = await props.model.updateTextures({
-        renderer: r,
-        textures,
-        updateAtlas: true,
-        updateColours: false,
-      });
-      await rerender();
-      await result.onAfterRender();
+      if (brickMapUpdateInProgress) {
+        console.log("Dropping concurrent onBrickMapChanged request");
+        return;
+      }
+      brickMapUpdateInProgress = true;
+      try {
+        const r = renderer();
+        const mat = material();
+        if (!r || !mat) return;
+        const textures = {
+          iTex: mat.uniforms.uIndirectionTex.value,
+          aTex: mat.uniforms.uAtlasTex.value,
+          cTex: mat.uniforms.uColourTex.value,
+        };
+        const result = await props.model.updateTextures({
+          renderer: r,
+          textures,
+          updateAtlas: true,
+          updateColours: false,
+        });
+        await rerender();
+        await result.onAfterRender();
+      } finally {
+        brickMapUpdateInProgress = false;
+      }
     },
     async onBrickMapPaintChanged() {
-      const r = renderer();
-      const mat = material();
-      if (!r || !mat) return;
-      const textures = {
-        iTex: mat.uniforms.uIndirectionTex.value,
-        aTex: mat.uniforms.uAtlasTex.value,
-        cTex: mat.uniforms.uColourTex.value,
-      };
-      const result = await props.model.updateTextures({
-        renderer: r,
-        textures,
-        updateAtlas: false,
-        updateColours: true,
-      });
-      await rerender();
-      await result.onAfterRender();
+      if (brickMapUpdateInProgress) {
+        console.log("Dropping concurrent onBrickMapPaintChanged request");
+        return;
+      }
+      brickMapUpdateInProgress = true;
+      try {
+        const r = renderer();
+        const mat = material();
+        if (!r || !mat) return;
+        const textures = {
+          iTex: mat.uniforms.uIndirectionTex.value,
+          aTex: mat.uniforms.uAtlasTex.value,
+          cTex: mat.uniforms.uColourTex.value,
+        };
+        const result = await props.model.updateTextures({
+          renderer: r,
+          textures,
+          updateAtlas: false,
+          updateColours: true,
+        });
+        await rerender();
+        await result.onAfterRender();
+      } finally {
+        brickMapUpdateInProgress = false;
+      }
     },
     rerender,
     moveTransform() {

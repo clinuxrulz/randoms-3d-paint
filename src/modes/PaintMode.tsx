@@ -87,7 +87,6 @@ export class PaintMode implements Mode {
                 softness: state.softness * state.brushSize * 10.0,
               });
               params.updatePaint();
-              params.model.setCombineMode("Add");
               lastPt = nextPt;
             } else {
               if (lastPt.distanceTo(nextPt) < 15.0) {
@@ -105,7 +104,6 @@ export class PaintMode implements Mode {
                 softness: state.softness * state.brushSize * 10.0,
               });
               params.updatePaint();
-              params.model.setCombineMode("Add");
               lastPt = nextPt;
             }
           },
