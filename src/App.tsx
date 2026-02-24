@@ -52,6 +52,7 @@ const App: Component = () => {
     palette: { id: string, colour: THREE.Color, }[],
     selectedColourById: string | undefined,
     showingMarchedGeometry: THREE.BufferGeometry | undefined,
+    loadingProgress: number | undefined,
   }>({
     mkMode: IdleMode,
     pointerPos: undefined,
@@ -257,12 +258,16 @@ const App: Component = () => {
     const fileHandle = await dir.getFileHandle("quicksave.dat");
     const file = await fileHandle.getFile();
     const readable = file.stream();
-    for await (const progress of model.load(readable)) {
-      console.log(progress);
-      let controller = rendererViewController();
-      await controller?.onBrickMapChanged();
-      await controller?.onBrickMapPaintChanged();
-      model.resume();
+    try {
+      for await (const p of model.load(readable)) {
+        setState("loadingProgress", p.workDone / p.totalWork);
+        let controller = rendererViewController();
+        await controller?.onBrickMapChanged();
+        await controller?.onBrickMapPaintChanged();
+        model.resume();
+      }
+    } finally {
+      setState("loadingProgress", undefined);
     }
     // Final update after load completes, in case some updates were missed or worker finished without signalling resume.
     modeParams.updateSdf();
@@ -276,12 +281,16 @@ const App: Component = () => {
   };
   let load = async (file: File) => {
     const readable = file.stream();
-    for await (const progress of model.load(readable)) {
-      console.log(progress);
-      let controller = rendererViewController();
-      controller?.onBrickMapChanged();
-      controller?.onBrickMapPaintChanged();
-      model.resume();
+    try {
+      for await (const p of model.load(readable)) {
+        setState("loadingProgress", p.workDone / p.totalWork);
+        let controller = rendererViewController();
+        controller?.onBrickMapChanged();
+        controller?.onBrickMapPaintChanged();
+        model.resume();
+      }
+    } finally {
+      setState("loadingProgress", undefined);
     }
     // Final update after load completes, in case some updates were missed or worker finished without signalling resume.
     modeParams.updateSdf();
@@ -488,6 +497,29 @@ void main() { gl_FragColor = vec4(colour(vWorldPosition).rgb, 1.0); }
           pixelSize={state.pixelSize}
         />
       </div>
+      <Show when={state.loadingProgress != undefined}>
+        <div
+          style={{
+            position: "absolute",
+            left: "0",
+            top: "0",
+            right: "0",
+            bottom: "0",
+            display: "flex",
+            "justify-content": "center",
+            "align-items": "center",
+            "background-color": "rgba(0,0,0,0.5)",
+            "z-index": "100",
+            "pointer-events": "none",
+          }}
+        >
+          <progress
+            class="progress progress-primary w-56"
+            value={state.loadingProgress! * 100}
+            max="100"
+          ></progress>
+        </div>
+      </Show>
       <div
         class="ml-2 mt-2"
         style={{
