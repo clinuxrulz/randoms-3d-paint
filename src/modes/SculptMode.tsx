@@ -224,7 +224,6 @@ export class SculptMode implements Mode {
       mesh.position.copy(pt);
       mesh.updateMatrix();
       mesh.matrixWorldNeedsUpdate = true;
-      params.rerender();
       return mesh;
     });
     //
