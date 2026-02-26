@@ -7,6 +7,42 @@ export class NoTrack<A> {
   }
 }
 
+export function debounce<T extends (...args: any[]) => any>(
+  func: T,
+  delay: number
+): (...args: Parameters<T>) => void {
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+
+  return function(this: any, ...args: Parameters<T>): void {
+    const context = this;
+    clearTimeout(timeout);
+    timeout = setTimeout(() => func.apply(context, args), delay);
+  };
+}
+
+export function throttle<T extends (...args: any[]) => any>(
+  func: T,
+  delay: number
+): (...args: Parameters<T>) => void {
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+  let lastArgs: Parameters<T> | undefined;
+  let lastThis: any;
+
+  return function(this: any, ...args: Parameters<T>): void {
+    lastArgs = args;
+    lastThis = this;
+
+    if (!timeout) {
+      timeout = setTimeout(() => {
+        func.apply(lastThis, lastArgs as Parameters<T>);
+        timeout = undefined;
+        lastArgs = undefined;
+        lastThis = undefined;
+      }, delay);
+    }
+  };
+}
+
 export function renderTargetToDataURL(renderer: THREE.WebGLRenderer, renderTarget: THREE.WebGLRenderTarget) {
   const { width, height } = renderTarget;
   const pixels = new Uint8Array(4 * width * height);

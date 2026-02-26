@@ -935,7 +935,10 @@ export class OperationBVH {
                       }
                       break;
                     case "Paint":
-                      if (sdf <= 0.0) {
+                      if (sdf <= 1.0) {
+                        if (!op.colour) {
+                          console.warn("Paint operation missing colour!", op);
+                        }
                         colour = op.colour ?? colour; 
                       }
                       break;
@@ -1055,7 +1058,10 @@ export class OperationBVH {
                       }
                       break;
                     case "Paint":
-                      if (sdf <= 0.0) {
+                      if (sdf <= 1.0) {
+                        if (!op.colour) {
+                          console.warn("Paint operation missing colour!", op);
+                        }
                         colour = op.colour ?? colour; 
                       }
                       break;

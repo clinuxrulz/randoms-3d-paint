@@ -4,6 +4,7 @@ import { Mode } from "./Mode";
 import { ModeParams } from "./ModeParams";
 
 import { createStore } from "solid-js/store";
+import { throttle } from "../util";
 
 export class PaintMode implements Mode {
   instructions: Component;
@@ -11,6 +12,7 @@ export class PaintMode implements Mode {
   overlayObject3D: Accessor<THREE.Object3D<THREE.Object3DEventMap> | undefined>;
 
   constructor(params: ModeParams) {
+    const throttledUpdatePaint = throttle(params.updatePaint, 50);
     let [ state, setState, ] = createStore<{
       brushSize: number,
       softness: number,
@@ -76,34 +78,65 @@ export class PaintMode implements Mode {
               return;
             }
             if (lastPt == undefined) {
-              params.model.setCombineMode("Paint");
-              params.model.addOperation({
-                operationShape: {
-                  type: "Ellipsoid",
-                  radius: new THREE.Vector3().addScalar(0.5 * state.brushSize * 10.0),
-                },
-                origin: nextPt,
-                orientation: new THREE.Quaternion(),
-                softness: state.softness * state.brushSize * 10.0,
-              });
-              params.updatePaint();
+              if (state.softness === 0.0) {
+                let colour = params.currentColour();
+                if (colour) {
+                  params.model.directPaintDraw({
+                    pt: nextPt,
+                    brushSize: state.brushSize,
+                    colour,
+                  });
+                }
+              } else {
+                params.model.setCombineMode("Paint");
+                params.model.addOperation({
+                  operationShape: {
+                    type: "Ellipsoid",
+                    radius: new THREE.Vector3().addScalar(0.5 * state.brushSize * 10.0),
+                  },
+                  origin: nextPt,
+                  orientation: new THREE.Quaternion(),
+                  softness: state.softness * state.brushSize * 10.0,
+                });
+              }
+              if (state.softness === 0.0) {
+                params.updatePaint(); // Direct update for zero softness
+              } else {
+                throttledUpdatePaint(); // Throttled update for softness > 0
+              }
               lastPt = nextPt;
             } else {
               if (lastPt.distanceTo(nextPt) < 15.0) {
                 return;
               }
-              params.model.setCombineMode("Paint");
-              params.model.addOperation({
-                operationShape: {
-                  type: "Capsule",
-                  lenX: lastPt.distanceTo(nextPt),
-                  radius: 0.5 * state.brushSize * 10.0,
-                },
-                origin: lastPt.clone(),
-                orientation: new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(1, 0, 0), nextPt.clone().sub(lastPt).normalize()),
-                softness: state.softness * state.brushSize * 10.0,
-              });
-              params.updatePaint();
+              if (state.softness === 0.0) {
+                let colour = params.currentColour();
+                if (colour) {
+                  params.model.directPaintStroke({
+                    p1: lastPt.clone(),
+                    p2: nextPt,
+                    brushSize: state.brushSize,
+                    colour,
+                  });
+                }
+              } else {
+                params.model.setCombineMode("Paint");
+                params.model.addOperation({
+                  operationShape: {
+                    type: "Capsule",
+                    lenX: lastPt.distanceTo(nextPt),
+                    radius: 0.5 * state.brushSize * 10.0,
+                  },
+                  origin: lastPt.clone(),
+                  orientation: new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(1, 0, 0), nextPt.clone().sub(lastPt).normalize()),
+                  softness: state.softness * state.brushSize * 10.0,
+                });
+              }
+              if (state.softness === 0.0) {
+                params.updatePaint(); // Direct update for zero softness
+              } else {
+                throttledUpdatePaint(); // Throttled update for softness > 0
+              }
               lastPt = nextPt;
             }
           },
@@ -190,6 +223,8 @@ export class PaintMode implements Mode {
     this.overlayObject3D = overlayObject3D;
   }
 }
+
+
 
 
 

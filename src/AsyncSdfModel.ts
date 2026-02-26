@@ -49,27 +49,35 @@ export class AsyncSdfModel {
     readableStream: ReadableStream,
   ): AsyncGenerator<{ workDone: number, totalWork: number, }, void, unknown> {
     let worker = this.ensureWorkerInitialized();
-    let resolveNext: (value: any) => void;
-    let mkResolveNextPromise =
-      () => new Promise<
-        | { type: "progress", params: { workDone: number, totalWork: number, }, }
-        | { type: "done", params: { result: { type: "Ok", } | { type: "Err", message: string, } } }
-      >(r => resolveNext = r);
-    let resolveNextPromise = mkResolveNextPromise();
-    const resume = () => {
-      worker.postMessage({ method: "resume", params: {}, });
-    };
+
+    type Event =
+      | { type: "progress", params: { workDone: number, totalWork: number, }, }
+      | { type: "done", params: { result: { type: "Ok", } | { type: "Err", message: string, } } };
+
+    let eventQueue: Event[] = [];
+    let resolveNext: ((value: void) => void) | undefined = undefined;
+
     const onProgressId = this.registerCallback((eventData) => {
-      resolveNext({
+      eventQueue.push({
         type: eventData.type,
         params: { workDone: eventData.params.workDone, totalWork: eventData.params.totalWork, },
       });
+      if (resolveNext) {
+        resolveNext();
+        resolveNext = undefined;
+      }
     });
+
     const onDoneId = this.registerCallback((params) => {
       this.unregisterCallback(onProgressId);
       this.unregisterCallback(onDoneId);
-      resolveNext({ type: "done", params, });
+      eventQueue.push({ type: "done", params, });
+      if (resolveNext) {
+        resolveNext();
+        resolveNext = undefined;
+      }
     });
+
     worker.postMessage(
       {
         method: "load",
@@ -77,12 +85,16 @@ export class AsyncSdfModel {
       },
       [ readableStream, ],
     );
+
     while (true) {
-      let event = await resolveNextPromise;
-      resolveNextPromise = mkResolveNextPromise();
+      if (eventQueue.length === 0) {
+        await new Promise<void>(r => resolveNext = r);
+      }
+
+      let event = eventQueue.shift()!;
       if (event.type === "progress") {
         yield event.params;
-        resume();
+        worker.postMessage({ method: "resume", params: {}, });
       } else if (event.type === "done") {
         if (event.params.result.type === "Err") {
           throw new Error(event.params.result.message);
@@ -197,200 +209,330 @@ export class AsyncSdfModel {
   }
 
   private isLocked = false;
-  private operationQueue: {
-    operation: any,
-    resolve: () => void,
-  }[] = [];
+  private operationQueue: (() => Promise<any>)[] = [];
+
+  private async _enqueue<T>(task: () => Promise<T>): Promise<T> {
+    if (this.isLocked) {
+      return new Promise<T>((resolve) => {
+        this.operationQueue.push(async () => {
+          resolve(await task());
+        });
+      });
+    }
+    return await task();
+  }
 
   async addOperation(operation: {
     origin: THREE.Vector3,
     orientation: THREE.Quaternion,
     operationShape: OperationShape,
     softness: number,
+    dirtyTrackingEnabled?: boolean,
   }) {
-    if (this.isLocked) {
-      return new Promise<void>(resolve => {
-        this.operationQueue.push({ operation, resolve });
+    return this._enqueue(async () => {
+      let worker = this.ensureWorkerInitialized();
+      let doneResolve = () => {};
+      let donePromise = new Promise<void>((resolve) => doneResolve = resolve);
+      let doneId = this.registerCallback(() => {
+        this.unregisterCallback(doneId);
+        doneResolve();
       });
-    }
+      worker.postMessage({
+        method: "addOperation",
+        params: {
+          doneId,
+          origin: {
+            x: operation.origin.x,
+            y: operation.origin.y,
+            z: operation.origin.z,
+          },
+          orientation: {
+            x: operation.orientation.x,
+            y: operation.orientation.y,
+            z: operation.orientation.z,
+            w: operation.orientation.w,
+          },
+          operationShape: (() => {
+            let shape = operation.operationShape;
+            switch (shape.type) {
+              case "Ellipsoid":
+                return {
+                  type: "Ellipsoid",
+                  radius: {
+                    x: shape.radius.x,
+                    y: shape.radius.y,
+                    z: shape.radius.z,
+                  },
+                };
+              case "Box":
+                return {
+                  type: "Box",
+                  len: {
+                    x: shape.len.x,
+                    y: shape.len.y,
+                    z: shape.len.z,
+                  },
+                };
+              case "Capsule":
+                return {
+                  type: "Capsule",
+                  lenX: shape.lenX,
+                  radius: shape.radius,
+                };
+            }
+          })(),
+          softness: operation.softness,
+          dirtyTrackingEnabled: operation.dirtyTrackingEnabled,
+        },
+      });
+      return donePromise;
+    });
+  }
 
-    let worker = this.ensureWorkerInitialized();
-    let doneResolve = () => {};
-    let donePromise = new Promise<void>((resolve) => doneResolve = resolve);
-    let doneId = this.registerCallback(() => {
-      this.unregisterCallback(doneId);
-      doneResolve();
-    });
-    worker.postMessage({
-      method: "addOperation",
-      params: {
-        doneId,
-        origin: {
-          x: operation.origin.x,
-          y: operation.origin.y,
-          z: operation.origin.z,
+  async directDraw(params: {
+    pt: THREE.Vector3,
+    negative: boolean,
+    brushSize: number,
+  }) {
+    return this._enqueue(async () => {
+      let worker = this.ensureWorkerInitialized();
+      let doneResolve = () => {};
+      let donePromise = new Promise<void>((resolve) => doneResolve = resolve);
+      let doneId = this.registerCallback(() => {
+        this.unregisterCallback(doneId);
+        doneResolve();
+      });
+      worker.postMessage({
+        method: "directDraw",
+        params: {
+          doneId,
+          pt: { x: params.pt.x, y: params.pt.y, z: params.pt.z },
+          negative: params.negative,
+          brushSize: params.brushSize,
         },
-        orientation: {
-          x: operation.orientation.x,
-          y: operation.orientation.y,
-          z: operation.orientation.z,
-          w: operation.orientation.w,
-        },
-        operationShape: (() => {
-          let shape = operation.operationShape;
-          switch (shape.type) {
-            case "Ellipsoid":
-              return {
-                type: "Ellipsoid",
-                radius: {
-                  x: shape.radius.x,
-                  y: shape.radius.y,
-                  z: shape.radius.z,
-                },
-              };
-            case "Box":
-              return {
-                type: "Box",
-                len: {
-                  x: shape.len.x,
-                  y: shape.len.y,
-                  z: shape.len.z,
-                },
-              };
-            case "Capsule":
-              return {
-                type: "Capsule",
-                lenX: shape.lenX,
-                radius: shape.radius,
-              };
-          }
-        })(),
-        softness: operation.softness,
-      },
+      });
+      return donePromise;
     });
-    return donePromise;
+  }
+
+  async directStroke(params: {
+    p1: THREE.Vector3,
+    p2: THREE.Vector3,
+    negative: boolean,
+    brushSize: number,
+  }) {
+    return this._enqueue(async () => {
+      let worker = this.ensureWorkerInitialized();
+      let doneResolve = () => {};
+      let donePromise = new Promise<void>((resolve) => doneResolve = resolve);
+      let doneId = this.registerCallback(() => {
+        this.unregisterCallback(doneId);
+        doneResolve();
+      });
+      worker.postMessage({
+        method: "directStroke",
+        params: {
+          doneId,
+          p1: { x: params.p1.x, y: params.p1.y, z: params.p1.z },
+          p2: { x: params.p2.x, y: params.p2.y, z: params.p2.z },
+          negative: params.negative,
+          brushSize: params.brushSize,
+        },
+      });
+      return donePromise;
+    });
+  }
+
+  async directPaintDraw(params: {
+    pt: THREE.Vector3,
+    brushSize: number,
+    colour: THREE.Color,
+  }) {
+    return this._enqueue(async () => {
+      let worker = this.ensureWorkerInitialized();
+      let doneResolve = () => {};
+      let donePromise = new Promise<void>((resolve) => doneResolve = resolve);
+      let doneId = this.registerCallback(() => {
+        this.unregisterCallback(doneId);
+        doneResolve();
+      });
+      worker.postMessage({
+        method: "directPaintDraw",
+        params: {
+          doneId,
+          pt: { x: params.pt.x, y: params.pt.y, z: params.pt.z },
+          brushSize: params.brushSize,
+          r: params.colour.r,
+          g: params.colour.g,
+          b: params.colour.b,
+        },
+      });
+      return donePromise;
+    });
+  }
+
+  async directPaintStroke(params: {
+    p1: THREE.Vector3,
+    p2: THREE.Vector3,
+    brushSize: number,
+    colour: THREE.Color,
+  }) {
+    return this._enqueue(async () => {
+      let worker = this.ensureWorkerInitialized();
+      let doneResolve = () => {};
+      let donePromise = new Promise<void>((resolve) => doneResolve = resolve);
+      let doneId = this.registerCallback(() => {
+        this.unregisterCallback(doneId);
+        doneResolve();
+      });
+      worker.postMessage({
+        method: "directPaintStroke",
+        params: {
+          doneId,
+          p1: { x: params.p1.x, y: params.p1.y, z: params.p1.z },
+          p2: { x: params.p2.x, y: params.p2.y, z: params.p2.z },
+          brushSize: params.brushSize,
+          r: params.colour.r,
+          g: params.colour.g,
+          b: params.colour.b,
+        },
+      });
+      return donePromise;
+    });
   }
 
   async updateBrickMap() {
-    let worker = this.ensureWorkerInitialized();
-    let doneResolve = () => {};
-    let donePromise = new Promise<void>((resolve) => doneResolve = resolve);
-    let doneId = this.registerCallback(() => {
-      this.unregisterCallback(doneId);
-      doneResolve();
+    return this._enqueue(async () => {
+      let worker = this.ensureWorkerInitialized();
+      let doneResolve = () => {};
+      let donePromise = new Promise<void>((resolve) => doneResolve = resolve);
+      let doneId = this.registerCallback(() => {
+        this.unregisterCallback(doneId);
+        doneResolve();
+      });
+      worker.postMessage({
+        method: "updateBrickMap",
+        params: {
+          doneId,
+        },
+      });
+      return donePromise;
     });
-    worker.postMessage({
-      method: "updateBrickMap",
-      params: {
-        doneId,
-      },
-    });
-    return donePromise;
   }
 
   async setCombineMode(mode: "Add" | "Subtract" | "Paint") {
-    let worker = this.ensureWorkerInitialized();
-    let doneResolve = () => {};
-    let donePromise = new Promise<void>((resolve) => doneResolve = resolve);
-    let doneId = this.registerCallback(() => {
-      this.unregisterCallback(doneId);
-      doneResolve();
+    return this._enqueue(async () => {
+      let worker = this.ensureWorkerInitialized();
+      let doneResolve = () => {};
+      let donePromise = new Promise<void>((resolve) => doneResolve = resolve);
+      let doneId = this.registerCallback(() => {
+        this.unregisterCallback(doneId);
+        doneResolve();
+      });
+      worker.postMessage({
+        method: "setCombineMode",
+        params: {
+          doneId,
+          mode,
+        },
+      });
+      return donePromise;
     });
-    worker.postMessage({
-      method: "setCombineMode",
-      params: {
-        doneId,
-        mode,
-      },
-    });
-    return donePromise;
   }
 
   async setColour(colour: THREE.Color) {
-    let worker = this.ensureWorkerInitialized();
-    let doneResolve = () => {};
-    let donePromise = new Promise<void>((resolve) => doneResolve = resolve);
-    let doneId = this.registerCallback(() => {
-      this.unregisterCallback(doneId);
-      doneResolve();
+    return this._enqueue(async () => {
+      let worker = this.ensureWorkerInitialized();
+      let doneResolve = () => {};
+      let donePromise = new Promise<void>((resolve) => doneResolve = resolve);
+      let doneId = this.registerCallback(() => {
+        this.unregisterCallback(doneId);
+        doneResolve();
+      });
+      worker.postMessage({
+        method: "setColour",
+        params: {
+          doneId,
+          r: colour.r,
+          g: colour.g,
+          b: colour.b,
+        },
+      });
+      return donePromise;
     });
-    worker.postMessage({
-      method: "setColour",
-      params: {
-        doneId,
-        r: colour.r,
-        g: colour.g,
-        b: colour.b,
-      },
-    });
-    return donePromise;
   }
 
   async setSoftness(softness: number) {
-    let worker = this.ensureWorkerInitialized();
-    let doneResolve = () => {};
-    let donePromise = new Promise<void>((resolve) => doneResolve = resolve);
-    let doneId = this.registerCallback(() => {
-      this.unregisterCallback(doneId);
-      doneResolve();
+    return this._enqueue(async () => {
+      let worker = this.ensureWorkerInitialized();
+      let doneResolve = () => {};
+      let donePromise = new Promise<void>((resolve) => doneResolve = resolve);
+      let doneId = this.registerCallback(() => {
+        this.unregisterCallback(doneId);
+        doneResolve();
+      });
+      worker.postMessage({
+        method: "setSoftness",
+        params: {
+          doneId,
+          softness,
+        },
+      });
+      return donePromise;
     });
-    worker.postMessage({
-      method: "setSoftness",
-      params: {
-        doneId,
-        softness,
-      },
-    });
-    return donePromise;
   }
 
   async march(ro: THREE.Vector3, rd: THREE.Vector3): Promise<{
     hit: boolean,
     t: [number],
   }> {
-    let worker = this.ensureWorkerInitialized();
-    let doneResolve: (params: {
-      hit: boolean,
-      t: [number],
-    }) => void = () => {};
-    let donePromise = new Promise<{
-      hit: boolean,
-      t: [number],
-    }>((resolve) => doneResolve = resolve);
-    let doneId = this.registerCallback((params) => {
-      this.unregisterCallback(doneId);
-      doneResolve(params);
+    return this._enqueue(async () => {
+      let worker = this.ensureWorkerInitialized();
+      let doneResolve: (params: {
+        hit: boolean,
+        t: [number],
+      }) => void = () => {};
+      let donePromise = new Promise<{
+        hit: boolean,
+        t: [number],
+      }>((resolve) => doneResolve = resolve);
+      let doneId = this.registerCallback((params) => {
+        this.unregisterCallback(doneId);
+        doneResolve(params);
+      });
+      worker.postMessage({
+        method: "march",
+        params: {
+          doneId,
+          ro: { x: ro.x, y: ro.y, z: ro.z },
+          rd: { x: rd.x, y: rd.y, z: rd.z },
+        },
+      });
+      return donePromise;
     });
-    worker.postMessage({
-      method: "march",
-      params: {
-        doneId,
-        ro: { x: ro.x, y: ro.y, z: ro.z },
-        rd: { x: rd.x, y: rd.y, z: rd.z },
-      },
-    });
-    return donePromise;
   }
 
   async writeShaderCode(): Promise<string> {
-    let worker = this.ensureWorkerInitialized();
-    let doneResolve: (params: {
-      code: string,
-    }) => void = () => {};
-    let donePromise = new Promise<string>((resolve) => {
-      doneResolve = (params) => resolve(params.code);
+    return this._enqueue(async () => {
+      let worker = this.ensureWorkerInitialized();
+      let doneResolve: (params: {
+        code: string,
+      }) => void = () => {};
+      let donePromise = new Promise<string>((resolve) => {
+        doneResolve = (params) => resolve(params.code);
+      });
+      let doneId = this.registerCallback((params) => {
+        this.unregisterCallback(doneId);
+        doneResolve(params);
+      });
+      worker.postMessage({
+        method: "writeShaderCode",
+        params: {
+          doneId,
+        },
+      });
+      return donePromise;
     });
-    let doneId = this.registerCallback((params) => {
-      this.unregisterCallback(doneId);
-      doneResolve(params);
-    });
-    worker.postMessage({
-      method: "writeShaderCode",
-      params: {
-        doneId,
-      },
-    });
-    return donePromise;
   }
 
   initTexturesThreeJs(
@@ -475,7 +617,7 @@ export class AsyncSdfModel {
         lockResult,
       );
     }
-    if (params.updateColours) {
+    if (params.updateColours || lockResult.dirtyColourBricks == "all") {
       this.updatePaintThreeJs(
         params.renderer,
         params.textures,
@@ -490,13 +632,9 @@ export class AsyncSdfModel {
         const queueToProcess = this.operationQueue;
         this.operationQueue = [];
 
-        const promises = queueToProcess.map(item => {
-          return this.addOperation(item.operation).then(() => {
-            item.resolve();
-          });
-        });
-
-        await Promise.all(promises);
+        for (const task of queueToProcess) {
+          await task();
+        }
       },
     };
   }

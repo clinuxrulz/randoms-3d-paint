@@ -258,6 +258,7 @@ const App: Component = () => {
     const fileHandle = await dir.getFileHandle("quicksave.dat");
     const file = await fileHandle.getFile();
     const readable = file.stream();
+    setState("loadingProgress", 0);
     try {
       for await (const p of model.load(readable)) {
         setState("loadingProgress", p.workDone / p.totalWork);
@@ -270,6 +271,11 @@ const App: Component = () => {
       setState("loadingProgress", undefined);
     }
     // Final update after load completes, in case some updates were missed or worker finished without signalling resume.
+    {
+      let controller = rendererViewController();
+      await controller?.onBrickMapChanged();
+      await controller?.onBrickMapPaintChanged();
+    }
     modeParams.updateSdf();
     modeParams.updatePaint();
   };
@@ -281,6 +287,7 @@ const App: Component = () => {
   };
   let load = async (file: File) => {
     const readable = file.stream();
+    setState("loadingProgress", 0);
     try {
       for await (const p of model.load(readable)) {
         setState("loadingProgress", p.workDone / p.totalWork);
@@ -293,6 +300,11 @@ const App: Component = () => {
       setState("loadingProgress", undefined);
     }
     // Final update after load completes, in case some updates were missed or worker finished without signalling resume.
+    {
+      let controller = rendererViewController();
+      await controller?.onBrickMapChanged();
+      await controller?.onBrickMapPaintChanged();
+    }
     modeParams.updateSdf();
     modeParams.updatePaint();
   };

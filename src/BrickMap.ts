@@ -46,6 +46,21 @@ export class BrickMap {
   forceAllAtlasDirty = false;
   forceAllColoursDirty = false;
 
+  clear() {
+    this.indirectionData.fill(0);
+    this.atlasData.fill(0);
+    this.colourData.fill(0);
+    this.brickMap.clear();
+    this.freeBricks.splice(0, this.freeBricks.length);
+    for (let i = 0; i < MAX_BRICKS; i++) {
+      this.freeBricks.push(i);
+    }
+    this.dirtyAtlasBricks.clear();
+    this.dirtyColourBricks.clear();
+    this.forceAllAtlasDirty = true;
+    this.forceAllColoursDirty = true;
+  }
+
   get numBricks(): number {
     return this.brickMap.size;
   }
@@ -451,7 +466,7 @@ export class BrickMap {
     // _map_tmpV3_[4,5,6,7] released
     let brickBase = this._map_tmpV3_4.copy(brickInfo).multiplyScalar(255.0 * 10.0);
     // _map_tmpV3_6 used
-    let atlasVoxelPos = this._map_tmpV3_5.copy(brickBase).addScalar(1.0).add(this._map_tmpV3_6.copy(cellLocal).multiplyScalar(8.0));
+    let atlasVoxelPos = this._map_tmpV3_5.copy(brickBase).addScalar(1.5).add(this._map_tmpV3_6.copy(cellLocal).multiplyScalar(8.0));
     // _map_tmpV3_6 released
     let atlasUVW = this._map_tmpV3_6.copy(atlasVoxelPos).divideScalar(ATLAS_RES);
     let val = this.readAtlasTexture01(atlasUVW);
@@ -870,7 +885,7 @@ vec4 colour(vec3 p) {
     return vec4(0.0, 0.0, 0.0, 1.0);
   }
   vec3 brickBase = brickInfo.xyz * 255.0 * 10.0;
-  vec3 atlasVoxelPos = brickBase + 1.0 + (cellLocal * 8.0);
+  vec3 atlasVoxelPos = brickBase + 1.5 + (cellLocal * 8.0);
   vec3 atlasUVW = atlasVoxelPos / ATLAS_RES;
   vec4 c = texture(uColourTex, atlasUVW);
   return vec4(1.0 - c.r, 1.0 - c.g, 1.0 - c.b, 1.0);
@@ -886,7 +901,7 @@ float map(vec3 p, vec3 rd) {
     vec4 brickInfo = texture(uIndirectionTex, safeUVW);
     if (brickInfo.a > 0.9) {
         vec3 brickBase = brickInfo.xyz * 255.0 * 10.0;
-        vec3 atlasVoxelPos = brickBase + 1.0 + (cellLocal * 8.0);
+        vec3 atlasVoxelPos = brickBase + 1.5 + (cellLocal * 8.0);
         vec3 atlasUVW = atlasVoxelPos / ATLAS_RES;
         float val = texture(uAtlasTex, atlasUVW).r;
         return (0.5 - val) * 2.0 * VOXEL_SIZE;

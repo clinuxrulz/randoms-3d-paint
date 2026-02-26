@@ -4,6 +4,7 @@ import { Mode } from "./Mode";
 import { ModeParams } from "./ModeParams";
 
 import { createStore } from "solid-js/store";
+import { throttle } from "../util";
 
 export class SculptMode implements Mode {
   instructions: Component;
@@ -11,6 +12,7 @@ export class SculptMode implements Mode {
   overlayObject3D: Accessor<THREE.Object3D<THREE.Object3DEventMap> | undefined>;
 
   constructor(params: ModeParams) {
+    const throttledUpdateSdf = throttle(params.updateSdf, 50);
     let [ state, setState, ] = createStore<{
       brushSize: number,
       softness: number,
@@ -77,46 +79,83 @@ export class SculptMode implements Mode {
               return;
             }
             if (lastPt == undefined) {
-              if (state.isNegativeBrush) {
-                params.model.setCombineMode("Subtract");
-              } else {
-                params.model.setCombineMode("Add");
+              // Only call addOperation if softness > 0
+              if (state.softness > 0.0) {
+                if (state.isNegativeBrush) {
+                  params.model.setCombineMode("Subtract");
+                } else {
+                  params.model.setCombineMode("Add");
+                }
+                params.model.setSoftness(state.softness * state.brushSize * 10.0);
+                params.model.addOperation({
+                  operationShape: {
+                    type: "Ellipsoid",
+                    radius: new THREE.Vector3().addScalar(0.5 * (state.brushSize - 4.0*state.softness) * 10.0),
+                  },
+                  origin: nextPt,
+                  orientation: new THREE.Quaternion(),
+                  softness: state.softness * state.brushSize * 10.0,
+                  dirtyTrackingEnabled: state.softness !== 0.0,
+                });
+                params.model.setSoftness(0.0); // Reset softness after operation
               }
-              params.model.setSoftness(state.softness * state.brushSize * 10.0);
-              params.model.addOperation({
-                operationShape: {
-                  type: "Ellipsoid",
-                  radius: new THREE.Vector3().addScalar(0.5 * (state.brushSize - 4.0*state.softness) * 10.0),
-                },
-                origin: nextPt,
-                orientation: new THREE.Quaternion(),
-                softness: state.softness * state.brushSize * 10.0,
-              });
-              params.model.setSoftness(0.0);
-              params.updateSdf();
+              // Always call directDraw if softness is 0.0
+              if (state.softness === 0.0) {
+                params.model.directDraw({
+                  pt: nextPt,
+                  negative: state.isNegativeBrush,
+                  brushSize: state.brushSize,
+                });
+              }
+
+              // Conditionally update SDF
+              if (state.softness === 0.0) {
+                params.updateSdf(); // Direct update for zero softness
+              } else {
+                throttledUpdateSdf(); // Throttled update for softness > 0
+              }
               lastPt = nextPt;
             } else {
               if (lastPt.distanceTo(nextPt) < 15.0) {
                 return;
               }
-              if (state.isNegativeBrush) {
-                params.model.setCombineMode("Subtract");
-              } else {
-                params.model.setCombineMode("Add");
+              // Only call addOperation if softness > 0
+              if (state.softness > 0.0) {
+                if (state.isNegativeBrush) {
+                  params.model.setCombineMode("Subtract");
+                } else {
+                  params.model.setCombineMode("Add");
+                }
+                params.model.setSoftness(state.softness * state.brushSize * 10.0);
+                params.model.addOperation({
+                  operationShape: {
+                    type: "Capsule",
+                    lenX: lastPt.distanceTo(nextPt),
+                    radius: 0.5 * (state.brushSize - 4.0*state.softness) * 10.0,
+                  },
+                  origin: lastPt.clone(),
+                  orientation: new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(1, 0, 0), nextPt.clone().sub(lastPt).normalize()),
+                  softness: state.softness * state.brushSize * 10.0,
+                  dirtyTrackingEnabled: state.softness !== 0.0,
+                });
+                params.model.setSoftness(0.0); // Reset softness after operation
               }
-              params.model.setSoftness(state.softness * state.brushSize * 10.0);
-              params.model.addOperation({
-                operationShape: {
-                  type: "Capsule",
-                  lenX: lastPt.distanceTo(nextPt),
-                  radius: 0.5 * (state.brushSize - 4.0*state.softness) * 10.0,
-                },
-                origin: lastPt.clone(),
-                orientation: new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(1, 0, 0), nextPt.clone().sub(lastPt).normalize()),
-                softness: state.softness * state.brushSize * 10.0,
-              });
-              params.model.setSoftness(0.0);
-              params.updateSdf();
+              // Always call directStroke if softness is 0.0
+              if (state.softness === 0.0) {
+                params.model.directStroke({
+                  p1: lastPt.clone(),
+                  p2: nextPt,
+                  negative: state.isNegativeBrush,
+                  brushSize: state.brushSize,
+                });
+              }
+
+              // Conditionally update SDF
+              if (state.softness === 0.0) {
+                params.updateSdf(); // Direct update for zero softness
+              } else {
+                throttledUpdateSdf(); // Throttled update for softness > 0
+              }
               lastPt = nextPt;
             }
           },

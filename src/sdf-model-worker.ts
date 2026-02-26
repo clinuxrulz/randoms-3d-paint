@@ -49,6 +49,18 @@ self.addEventListener("message", (e) => {
     case "setSoftness":
       setSoftness(params);
       break;
+    case "directDraw":
+      directDraw(params);
+      break;
+    case "directStroke":
+      directStroke(params);
+      break;
+    case "directPaintDraw":
+      directPaintDraw(params);
+      break;
+    case "directPaintStroke":
+      directPaintStroke(params);
+      break;
     case "march":
       march(params);
       break;
@@ -58,10 +70,220 @@ self.addEventListener("message", (e) => {
   }
 });
 
+async function directDraw(params: {
+  pt: { x: number, y: number, z: number },
+  negative: boolean,
+  brushSize: number,
+  doneId: string,
+}) {
+  let vptx = params.pt.x / 10.0;
+  let vpty = params.pt.y / 10.0;
+  let vptz = params.pt.z / 10.0;
+  let cx = 512 + Math.round(vptx);
+  let cy = 512 + Math.round(vpty);
+  let cz = 512 + Math.round(vptz);
+  let r = 0.5 * params.brushSize;
+  let r2 = Math.round(r);
+  const sqrt3 = Math.sqrt(3);
+  for (let i = -r2 - 2; i <= r2 + 2; ++i) {
+    let dz = (cz + i - 512) - vptz;
+    for (let j = -r2 - 2; j <= r2 + 2; ++j) {
+      let dy = (cy + j - 512) - vpty;
+      for (let k = -r2 - 2; k <= r2 + 2; ++k) {
+        let dx = (cx + k - 512) - vptx;
+        let x = cx + k;
+        let y = cy + j;
+        let z = cz + i;
+        if (x < 0 || x >= 1024 || y < 0 || y >= 1024 || z < 0 || z >= 1024) continue;
+        let a = (Math.sqrt(dx * dx + dy * dy + dz * dz) - r) / sqrt3;
+        let b = (128.0 - brickMap.get(x, y, z)) / 127.0;
+        let c = params.negative ? Math.max(b, -a) : Math.min(b, a);
+        let val = 128 - Math.floor(Math.max(-1, Math.min(1, c)) * 127);
+        if (val < 1) val = 1;
+        if (val > 255) val = 255;
+        brickMap.set(x, y, z, val);
+      }
+    }
+  }
+  self.postMessage({
+    method: "callCallback",
+    params: { id: params.doneId, },
+  });
+}
+
+async function directStroke(params: {
+  p1: { x: number, y: number, z: number },
+  p2: { x: number, y: number, z: number },
+  negative: boolean,
+  brushSize: number,
+  doneId: string,
+}) {
+  let v1x = params.p1.x / 10.0;
+  let v1y = params.p1.y / 10.0;
+  let v1z = params.p1.z / 10.0;
+  let v2x = params.p2.x / 10.0;
+  let v2y = params.p2.y / 10.0;
+  let v2z = params.p2.z / 10.0;
+
+  let r = 0.5 * params.brushSize;
+  let r2 = Math.round(r);
+
+  let ux = v2x - v1x;
+  let uy = v2y - v1y;
+  let uz = v2z - v1z;
+  let uu = ux * ux + uy * uy + uz * uz;
+
+  let min_x = 512 + Math.floor(Math.min(v1x, v2x) - r - 2);
+  let max_x = 512 + Math.ceil(Math.max(v1x, v2x) + r + 2);
+  let min_y = 512 + Math.floor(Math.min(v1y, v2y) - r - 2);
+  let max_y = 512 + Math.ceil(Math.max(v1y, v2y) + r + 2);
+  let min_z = 512 + Math.floor(Math.min(v1z, v2z) - r - 2);
+  let max_z = 512 + Math.ceil(Math.max(v1z, v2z) + r + 2);
+
+  const sqrt3 = Math.sqrt(3);
+  for (let i = min_z; i <= max_z; ++i) {
+    let dz_v1 = (i - 512) - v1z;
+    for (let j = min_y; j <= max_y; ++j) {
+      let dy_v1 = (j - 512) - v1y;
+      for (let k = min_x; k <= max_x; ++k) {
+        if (i < 0 || i >= 1024 || j < 0 || j >= 1024 || k < 0 || k >= 1024) continue;
+        let dx_v1 = (k - 512) - v1x;
+        
+        let t = (dx_v1 * ux + dy_v1 * uy + dz_v1 * uz) / uu;
+        t = Math.max(0.0, Math.min(1.0, t));
+        
+        let dx = dx_v1 - ux * t;
+        let dy = dy_v1 - uy * t;
+        let dz = dz_v1 - uz * t;
+        
+        let a = (Math.sqrt(dx * dx + dy * dy + dz * dz) - r) / sqrt3;
+        let b = (128.0 - brickMap.get(k, j, i)) / 127.0;
+        let c = params.negative ? Math.max(b, -a) : Math.min(b, a);
+        let val = 128 - Math.floor(Math.max(-1, Math.min(1, c)) * 127);
+        if (val < 1) val = 1;
+        if (val > 255) val = 255;
+        brickMap.set(k, j, i, val);
+      }
+    }
+  }
+  self.postMessage({
+    method: "callCallback",
+    params: { id: params.doneId, },
+  });
+}
+
+async function directPaintDraw(params: {
+  pt: { x: number, y: number, z: number },
+  brushSize: number,
+  r: number,
+  g: number,
+  b: number,
+  doneId: string,
+}) {
+  let vptx = params.pt.x / 10.0;
+  let vpty = params.pt.y / 10.0;
+  let vptz = params.pt.z / 10.0;
+  let cx = 512 + Math.round(vptx);
+  let cy = 512 + Math.round(vpty);
+  let cz = 512 + Math.round(vptz);
+  let r = 0.5 * params.brushSize;
+  let r2 = Math.round(r);
+  
+  let pr = Math.floor(params.r * 255.0);
+  let pg = Math.floor(params.g * 255.0);
+  let pb = Math.floor(params.b * 255.0);
+
+  for (let i = -r2 - 2; i <= r2 + 2; ++i) {
+    let dz = (cz + i - 512) - vptz;
+    for (let j = -r2 - 2; j <= r2 + 2; ++j) {
+      let dy = (cy + j - 512) - vpty;
+      for (let k = -r2 - 2; k <= r2 + 2; ++k) {
+        let dx = (cx + k - 512) - vptx;
+        let x = cx + k;
+        let y = cy + j;
+        let z = cz + i;
+        if (x < 0 || x >= 1024 || y < 0 || y >= 1024 || z < 0 || z >= 1024) continue;
+        
+        let dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
+        if (dist <= r) {
+          brickMap.paint(x, y, z, pr, pg, pb);
+        }
+      }
+    }
+  }
+  self.postMessage({
+    method: "callCallback",
+    params: { id: params.doneId, },
+  });
+}
+
+async function directPaintStroke(params: {
+  p1: { x: number, y: number, z: number },
+  p2: { x: number, y: number, z: number },
+  brushSize: number,
+  r: number,
+  g: number,
+  b: number,
+  doneId: string,
+}) {
+  let v1x = params.p1.x / 10.0;
+  let v1y = params.p1.y / 10.0;
+  let v1z = params.p1.z / 10.0;
+  let v2x = params.p2.x / 10.0;
+  let v2y = params.p2.y / 10.0;
+  let v2z = params.p2.z / 10.0;
+
+  let r = 0.5 * params.brushSize;
+  let r2 = Math.round(r);
+
+  let ux = v2x - v1x;
+  let uy = v2y - v1y;
+  let uz = v2z - v1z;
+  let uu = ux * ux + uy * uy + uz * uz;
+
+  let min_x = 512 + Math.floor(Math.min(v1x, v2x) - r - 2);
+  let max_x = 512 + Math.ceil(Math.max(v1x, v2x) + r + 2);
+  let min_y = 512 + Math.floor(Math.min(v1y, v2y) - r - 2);
+  let max_y = 512 + Math.ceil(Math.max(v1y, v2y) + r + 2);
+  let min_z = 512 + Math.floor(Math.min(v1z, v2z) - r - 2);
+  let max_z = 512 + Math.ceil(Math.max(v1z, v2z) + r + 2);
+
+  let pr = Math.floor(params.r * 255.0);
+  let pg = Math.floor(params.g * 255.0);
+  let pb = Math.floor(params.b * 255.0);
+
+  for (let i = min_z; i <= max_z; ++i) {
+    let dz_v1 = (i - 512) - v1z;
+    for (let j = min_y; j <= max_y; ++j) {
+      let dy_v1 = (j - 512) - v1y;
+      for (let k = min_x; k <= max_x; ++k) {
+        if (i < 0 || i >= 1024 || j < 0 || j >= 1024 || k < 0 || k >= 1024) continue;
+        let dx_v1 = (k - 512) - v1x;
+        
+        let t = (dx_v1 * ux + dy_v1 * uy + dz_v1 * uz) / uu;
+        t = Math.max(0.0, Math.min(1.0, t));
+        
+        let dx = dx_v1 - ux * t;
+        let dy = dy_v1 - uy * t;
+        let dz = dz_v1 - uz * t;
+        
+        let dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
+        if (dist <= r) {
+          brickMap.paint(k, j, i, pr, pg, pb);
+        }
+      }
+    }
+  }
+  self.postMessage({
+    method: "callCallback",
+    params: { id: params.doneId, },
+  });
+}
+
 async function march(params: {
   ro: { x: number, y: number, z: number },
   rd: { x: number, y: number, z: number },
-  doneId: number,
+  doneId: string,
 }) {
   let ro = new THREE.Vector3(params.ro.x, params.ro.y, params.ro.z);
   let rd = new THREE.Vector3(params.rd.x, params.rd.y, params.rd.z);
@@ -79,7 +301,7 @@ async function march(params: {
   });
 }
 
-async function writeShaderCode(params: { doneId: number }) {
+async function writeShaderCode(params: { doneId: string }) {
   let code = brickMap.writeShaderCode();
   self.postMessage({
     method: "callCallback",
@@ -94,8 +316,8 @@ async function writeShaderCode(params: { doneId: number }) {
 
 async function load(params: {
   readableStream: ReadableStream,
-  onProgressId: number,
-  onDoneId: number,
+  onProgressId: string,
+  onDoneId: string,
 }) {
   //
   let reader = params.readableStream.getReader();
@@ -134,7 +356,10 @@ async function load(params: {
   isLoading = true;
   let lastTime = performance.now();
   let readerHelper = new ReaderHelper(decompressReader);
+  brickMap.clear();
   await operations.load(version, readerHelper);
+  console.log(`Loaded ${operations.operations.length} operations`);
+
   for await (let progress of operations.updateBrickMapAsyncGen(brickMap)) {
     let time = performance.now();
     if (time - lastTime >= DELAY_BETWEEN_PROGRESS_UPDATE) {
@@ -166,7 +391,7 @@ async function load(params: {
   });
 }
 
-async function save(params: { onDoneId: number, writableStream: WritableStream }) {
+async function save(params: { onDoneId: string, writableStream: WritableStream }) {
   let version = 2;
   const writer = params.writableStream.getWriter();
 
@@ -182,6 +407,7 @@ async function save(params: { onDoneId: number, writableStream: WritableStream }
     await operations.save(version, compressedWriter);
 
     await compressedWriter.close();
+    await compressionDone;
 
     self.postMessage({
       method: "callCallback",
@@ -208,12 +434,14 @@ async function save(params: { onDoneId: number, writableStream: WritableStream }
 }
 
 async function addOperation(params: {
-  doneId: number,
+  doneId: string,
   origin: { x: number, y: number, z: number },
   orientation: { x: number, y: number, z: number, w: number },
   operationShape: { type: string, [key: string]: any },
   softness: number,
+  dirtyTrackingEnabled?: boolean,
 }) {
+  operations.dirtyTrackingEnabled = params.dirtyTrackingEnabled ?? true;
   operations.softness = params.softness;
   const origin = new THREE.Vector3(params.origin.x, params.origin.y, params.origin.z);
   const orientation = new THREE.Quaternion(params.orientation.x, params.orientation.y, params.orientation.z, params.orientation.w);
@@ -249,7 +477,7 @@ async function addOperation(params: {
   });
 }
 
-async function updateBrickMap(params: { doneId: number, }) {
+async function updateBrickMap(params: { doneId: string, }) {
   operations.updateBrickMap(brickMap);
   self.postMessage({
     method: "callCallback",
@@ -259,7 +487,7 @@ async function updateBrickMap(params: { doneId: number, }) {
   });
 }
 
-function lock(params: { doneId: number, }) {
+function lock(params: { doneId: string, }) {
   let result = brickMap.lock();
   let dirtyAtlasBricks: "all" | number[];
   if (brickMap.forceAllAtlasDirty) {
@@ -302,21 +530,23 @@ function unlock(params: {
   indirectionData: ArrayBuffer,
   atlasData: ArrayBuffer,
   colourData: ArrayBuffer,
-  doneId: number,
+  doneId?: string,
 }) {
   brickMap.unlock(params);
-  self.postMessage(
-    {
-      method: "callCallback",
-      params: {
-        id: params.doneId,
-        params: {},
+  if (params.doneId !== undefined) {
+    self.postMessage(
+      {
+        method: "callCallback",
+        params: {
+          id: params.doneId,
+          params: {},
+        },
       },
-    },
-  );
+    );
+  }
 }
 
-async function setCombineMode(params: { doneId: number, mode: "Add" | "Subtract" | "Paint" }) {
+async function setCombineMode(params: { doneId: string, mode: "Add" | "Subtract" | "Paint" }) {
   operations.combineMode = params.mode;
   self.postMessage({
     method: "callCallback",
@@ -326,7 +556,7 @@ async function setCombineMode(params: { doneId: number, mode: "Add" | "Subtract"
   });
 }
 
-async function setColour(params: { doneId: number, r: number, g: number, b: number }) {
+async function setColour(params: { doneId: string, r: number, g: number, b: number }) {
   operations.colour.setRGB(params.r, params.g, params.b);
   self.postMessage({
     method: "callCallback",
@@ -336,7 +566,7 @@ async function setColour(params: { doneId: number, r: number, g: number, b: numb
   });
 }
 
-async function setSoftness(params: { doneId: number, softness: number }) {
+async function setSoftness(params: { doneId: string, softness: number }) {
   operations.softness = params.softness;
   self.postMessage({
     method: "callCallback",
