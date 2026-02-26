@@ -648,14 +648,14 @@ export class AsyncSdfModel {
   }> {
     this.isLocked = true;
     let lockResult = await this.lock();
-    if (params.updateAtlas) {
+    if (params.updateAtlas || lockResult.dirtyAtlasBricks == "all" || (Array.isArray(lockResult.dirtyAtlasBricks) && lockResult.dirtyAtlasBricks.length > 0)) {
       this.updateTexturesThreeJs(
         params.renderer,
         params.textures,
         lockResult,
       );
     }
-    if (params.updateColours || lockResult.dirtyColourBricks == "all") {
+    if (params.updateColours || lockResult.dirtyColourBricks == "all" || (Array.isArray(lockResult.dirtyColourBricks) && lockResult.dirtyColourBricks.length > 0)) {
       this.updatePaintThreeJs(
         params.renderer,
         params.textures,
@@ -673,6 +673,7 @@ export class AsyncSdfModel {
         for (const task of queueToProcess) {
           await task();
         }
+        params.renderer.state.reset();
       },
     };
   }
@@ -738,7 +739,6 @@ export class AsyncSdfModel {
           this.tempAtlasDataBuffer,
         );
       }
-      renderer.state.reset();
     }
   }
 
@@ -799,8 +799,6 @@ export class AsyncSdfModel {
         gl.RGBA,
         gl.UNSIGNED_BYTE,
         this.tempColourDataBuffer
-      );
-    }
-    renderer.state.reset();
-  }
+              );
+            }  }
 }

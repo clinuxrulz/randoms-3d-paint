@@ -12,6 +12,7 @@ export type RendererViewController = {
   canvasSize: Accessor<THREE.Vector2 | undefined>,
   onBrickMapChanged: () => Promise<void>,
   onBrickMapPaintChanged: () => Promise<void>,
+  onBrickMapShapeAndPaintChanged: () => Promise<void>,
   rerender: () => Promise<void>,
   moveTransform: () => void,
   rotateTransform: () => void,
@@ -337,6 +338,33 @@ const RendererView: Component<{
           renderer: r,
           textures,
           updateAtlas: false,
+          updateColours: true,
+        });
+        await rerender();
+        await result.onAfterRender();
+      } finally {
+        brickMapUpdateInProgress = false;
+      }
+    },
+    async onBrickMapShapeAndPaintChanged() {
+      if (brickMapUpdateInProgress) {
+        console.log("Dropping concurrent onBrickMapShapeAndPaintChanged request");
+        return;
+      }
+      brickMapUpdateInProgress = true;
+      try {
+        const r = renderer();
+        const mat = material();
+        if (!r || !mat) return;
+        const textures = {
+          iTex: mat.uniforms.uIndirectionTex.value,
+          aTex: mat.uniforms.uAtlasTex.value,
+          cTex: mat.uniforms.uColourTex.value,
+        };
+        const result = await props.model.updateTextures({
+          renderer: r,
+          textures,
+          updateAtlas: true,
           updateColours: true,
         });
         await rerender();

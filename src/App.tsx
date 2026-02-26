@@ -263,8 +263,7 @@ const App: Component = () => {
       for await (const p of model.load(readable)) {
         setState("loadingProgress", p.workDone / p.totalWork);
         let controller = rendererViewController();
-        await controller?.onBrickMapChanged();
-        await controller?.onBrickMapPaintChanged();
+        await controller?.onBrickMapShapeAndPaintChanged();
         model.resume();
       }
     } finally {
@@ -273,8 +272,7 @@ const App: Component = () => {
     // Final update after load completes, in case some updates were missed or worker finished without signalling resume.
     {
       let controller = rendererViewController();
-      await controller?.onBrickMapChanged();
-      await controller?.onBrickMapPaintChanged();
+      await controller?.onBrickMapShapeAndPaintChanged();
     }
     modeParams.updateSdf();
     modeParams.updatePaint();
@@ -292,8 +290,7 @@ const App: Component = () => {
       for await (const p of model.load(readable)) {
         setState("loadingProgress", p.workDone / p.totalWork);
         let controller = rendererViewController();
-        controller?.onBrickMapChanged();
-        controller?.onBrickMapPaintChanged();
+        await controller?.onBrickMapShapeAndPaintChanged();
         model.resume();
       }
     } finally {
@@ -302,8 +299,7 @@ const App: Component = () => {
     // Final update after load completes, in case some updates were missed or worker finished without signalling resume.
     {
       let controller = rendererViewController();
-      await controller?.onBrickMapChanged();
-      await controller?.onBrickMapPaintChanged();
+      await controller?.onBrickMapShapeAndPaintChanged();
     }
     modeParams.updateSdf();
     modeParams.updatePaint();

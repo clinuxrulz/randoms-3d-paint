@@ -87,18 +87,18 @@ export class PaintMode implements Mode {
                     colour,
                   });
                 }
-              } else {
-                params.model.setCombineMode("Paint");
-                params.model.addOperation({
-                  operationShape: {
-                    type: "Ellipsoid",
-                    radius: new THREE.Vector3().addScalar(0.5 * state.brushSize * 10.0),
-                  },
-                  origin: nextPt,
-                  orientation: new THREE.Quaternion(),
-                  softness: state.softness * state.brushSize * 10.0,
-                });
               }
+              params.model.setCombineMode("Paint");
+              params.model.addOperation({
+                operationShape: {
+                  type: "Ellipsoid",
+                  radius: new THREE.Vector3().addScalar(0.5 * state.brushSize * 10.0),
+                },
+                origin: nextPt,
+                orientation: new THREE.Quaternion(),
+                softness: state.softness * state.brushSize * 10.0,
+                dirtyTrackingEnabled: state.softness !== 0,
+              });
               if (state.softness === 0.0) {
                 params.updatePaint(); // Direct update for zero softness
               } else {
@@ -119,19 +119,19 @@ export class PaintMode implements Mode {
                     colour,
                   });
                 }
-              } else {
-                params.model.setCombineMode("Paint");
-                params.model.addOperation({
-                  operationShape: {
-                    type: "Capsule",
-                    lenX: lastPt.distanceTo(nextPt),
-                    radius: 0.5 * state.brushSize * 10.0,
-                  },
-                  origin: lastPt.clone(),
-                  orientation: new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(1, 0, 0), nextPt.clone().sub(lastPt).normalize()),
-                  softness: state.softness * state.brushSize * 10.0,
-                });
               }
+              params.model.setCombineMode("Paint");
+              params.model.addOperation({
+                operationShape: {
+                  type: "Capsule",
+                  lenX: lastPt.distanceTo(nextPt),
+                  radius: 0.5 * state.brushSize * 10.0,
+                },
+                origin: lastPt.clone(),
+                orientation: new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(1, 0, 0), nextPt.clone().sub(lastPt).normalize()),
+                softness: state.softness * state.brushSize * 10.0,
+                dirtyTrackingEnabled: state.softness !== 0,
+              });
               if (state.softness === 0.0) {
                 params.updatePaint(); // Direct update for zero softness
               } else {
