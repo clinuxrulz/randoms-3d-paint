@@ -79,26 +79,23 @@ export class SculptMode implements Mode {
               return;
             }
             if (lastPt == undefined) {
-              // Only call addOperation if softness > 0
-              if (state.softness > 0.0) {
-                if (state.isNegativeBrush) {
-                  params.model.setCombineMode("Subtract");
-                } else {
-                  params.model.setCombineMode("Add");
-                }
-                params.model.setSoftness(state.softness * state.brushSize * 10.0);
-                params.model.addOperation({
-                  operationShape: {
-                    type: "Ellipsoid",
-                    radius: new THREE.Vector3().addScalar(0.5 * (state.brushSize - 4.0*state.softness) * 10.0),
-                  },
-                  origin: nextPt,
-                  orientation: new THREE.Quaternion(),
-                  softness: state.softness * state.brushSize * 10.0,
-                  dirtyTrackingEnabled: state.softness !== 0.0,
-                });
-                params.model.setSoftness(0.0); // Reset softness after operation
+              if (state.isNegativeBrush) {
+                params.model.setCombineMode("Subtract");
+              } else {
+                params.model.setCombineMode("Add");
               }
+              params.model.setSoftness(state.softness * state.brushSize * 10.0);
+              params.model.addOperation({
+                operationShape: {
+                  type: "Ellipsoid",
+                  radius: new THREE.Vector3().addScalar(0.5 * (state.brushSize - 4.0*state.softness) * 10.0),
+                },
+                origin: nextPt,
+                orientation: new THREE.Quaternion(),
+                softness: state.softness * state.brushSize * 10.0,
+                dirtyTrackingEnabled: state.softness !== 0.0,
+              });
+              params.model.setSoftness(0.0); // Reset softness after operation
               // Always call directDraw if softness is 0.0
               if (state.softness === 0.0) {
                 params.model.directDraw({
@@ -119,27 +116,24 @@ export class SculptMode implements Mode {
               if (lastPt.distanceTo(nextPt) < 15.0) {
                 return;
               }
-              // Only call addOperation if softness > 0
-              if (state.softness > 0.0) {
-                if (state.isNegativeBrush) {
-                  params.model.setCombineMode("Subtract");
-                } else {
-                  params.model.setCombineMode("Add");
-                }
-                params.model.setSoftness(state.softness * state.brushSize * 10.0);
-                params.model.addOperation({
-                  operationShape: {
-                    type: "Capsule",
-                    lenX: lastPt.distanceTo(nextPt),
-                    radius: 0.5 * (state.brushSize - 4.0*state.softness) * 10.0,
-                  },
-                  origin: lastPt.clone(),
-                  orientation: new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(1, 0, 0), nextPt.clone().sub(lastPt).normalize()),
-                  softness: state.softness * state.brushSize * 10.0,
-                  dirtyTrackingEnabled: state.softness !== 0.0,
-                });
-                params.model.setSoftness(0.0); // Reset softness after operation
+              if (state.isNegativeBrush) {
+                params.model.setCombineMode("Subtract");
+              } else {
+                params.model.setCombineMode("Add");
               }
+              params.model.setSoftness(state.softness * state.brushSize * 10.0);
+              params.model.addOperation({
+                operationShape: {
+                  type: "Capsule",
+                  lenX: lastPt.distanceTo(nextPt),
+                  radius: 0.5 * (state.brushSize - 4.0*state.softness) * 10.0,
+                },
+                origin: lastPt.clone(),
+                orientation: new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(1, 0, 0), nextPt.clone().sub(lastPt).normalize()),
+                softness: state.softness * state.brushSize * 10.0,
+                dirtyTrackingEnabled: state.softness !== 0.0,
+              });
+              params.model.setSoftness(0.0); // Reset softness after operation
               // Always call directStroke if softness is 0.0
               if (state.softness === 0.0) {
                 params.model.directStroke({
