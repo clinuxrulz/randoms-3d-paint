@@ -482,6 +482,44 @@ export class AsyncSdfModel {
     });
   }
 
+  async marchCubes(params: {
+    minX: number,
+    maxX: number,
+    minY: number,
+    maxY: number,
+    minZ: number,
+    maxZ: number,
+    cubeSize: number,
+    interpolate: boolean,
+  }): Promise<{
+    points: Float32Array,
+    triangles: Uint32Array,
+  }> {
+    return this._enqueue(async () => {
+      let worker = this.ensureWorkerInitialized();
+      let doneResolve: (params: {
+        points: Float32Array,
+        triangles: Uint32Array,
+      }) => void = () => {};
+      let donePromise = new Promise<{
+        points: Float32Array,
+        triangles: Uint32Array,
+      }>((resolve) => doneResolve = resolve);
+      let doneId = this.registerCallback((params) => {
+        this.unregisterCallback(doneId);
+        doneResolve(params);
+      });
+      worker.postMessage({
+        method: "marchCubes",
+        params: {
+          doneId,
+          ...params,
+        },
+      });
+      return donePromise;
+    });
+  }
+
   async march(ro: THREE.Vector3, rd: THREE.Vector3): Promise<{
     hit: boolean,
     t: [number],

@@ -3,6 +3,7 @@ import "./BrickMap";
 import { BrickMap } from "./BrickMap";
 import { Operations } from "./operations";
 import { ReaderHelper } from "./ReaderHelper";
+import { march as marchingCubes } from "./marching_cubes/marching_cubes";
 
 const DELAY_BETWEEN_PROGRESS_UPDATE = 100;
 
@@ -63,6 +64,9 @@ self.addEventListener("message", (e) => {
       break;
     case "march":
       march(params);
+      break;
+    case "marchCubes":
+      marchCubes(params);
       break;
     case "writeShaderCode":
       writeShaderCode(params);
@@ -299,6 +303,49 @@ async function march(params: {
       },
     },
   });
+}
+
+async function marchCubes(params: {
+  doneId: string,
+  minX: number,
+  maxX: number,
+  minY: number,
+  maxY: number,
+  minZ: number,
+  maxZ: number,
+  cubeSize: number,
+  interpolate: boolean,
+}) {
+  operations.bvh.evalSDF_start();
+  // ... rest of the marchCubes function
+  const dummyRd = new THREE.Vector3(0, 0, 1);
+  const p = new THREE.Vector3();
+  const res = await marchingCubes({
+    sdf: async (x: number, y: number, z: number) => {
+      // Scale local marching cube coordinates to world coordinates for evalSDF
+      const worldX = x * 50.0;
+      const worldY = y * 50.0;
+      const worldZ = z * 50.0;
+      const sdfValue = operations.bvh.evalSDF(worldX, worldY, worldZ);
+      // Scale the SDF result back to the marching cube's expected scale
+      return sdfValue / 50.0;
+    },
+    ...params,
+  });
+
+  const points = new Float32Array(res.points);
+  const triangles = new Uint32Array(res.triangles);
+
+  self.postMessage({
+    method: "callCallback",
+    params: {
+      id: params.doneId,
+      params: {
+        points,
+        triangles,
+      },
+    },
+  }, [ points.buffer, triangles.buffer, ]);
 }
 
 async function writeShaderCode(params: { doneId: string }) {

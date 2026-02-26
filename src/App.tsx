@@ -13,7 +13,7 @@ import { SculptMode } from './modes/SculptMode';
 
 import { PaintMode } from './modes/PaintMode';
 import ColourInput from './ColourInput';
-import { march, pointsAndTriangleIndicesToGeometry } from './marching_cubes/marching_cubes';
+import { pointsAndTriangleIndicesToGeometry } from './marching_cubes/marching_cubes';
 // @ts-ignore
 import { UVUnwrapper } from 'xatlas-three';
 import FileSaver from "file-saver";
@@ -327,11 +327,7 @@ const App: Component = () => {
     await model.save(writable);
   };
   let march_ = async () => {
-    let pointsAndTriangleIndices = await march({
-      sdf: async (x: number, y: number, z: number) => {
-        let { t } = await model.march(new THREE.Vector3(x,y,z), new THREE.Vector3(0,0,1));
-        return t[0];
-      },
+    let pointsAndTriangleIndices = await model.marchCubes({
       minX: -51*2,
       minY: -51*2,
       minZ: -51*2,

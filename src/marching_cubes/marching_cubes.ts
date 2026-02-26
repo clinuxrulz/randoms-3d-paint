@@ -7,17 +7,17 @@ export function pointsAndTriangleIndicesToGeometry(params: {
   /**
    * [x0, y0, z0, x1, y1, z1, x2, y2, z2, ...]
    */
-  points: number[],
+  points: number[] | Float32Array,
   /**
    * [t0v1Idx, t0v2Idx, t0v3Idx, t1v1Idx, t1v2Idx, t1v3Idx, ...]
    */
-  triangles: number[],
+  triangles: number[] | Uint32Array,
 }): THREE.BufferGeometry {
   let geometry = new THREE.BufferGeometry();
-  const positions = new Float32Array(params.points);
+  const positions = params.points instanceof Float32Array ? params.points : new Float32Array(params.points);
   const positionAttribute = new THREE.Float32BufferAttribute(positions, 3);
   geometry.setAttribute("position", positionAttribute);
-  geometry.setIndex(params.triangles);
+  geometry.setIndex(params.triangles instanceof Uint32Array ? new THREE.Uint32BufferAttribute(params.triangles, 1) : params.triangles);
   geometry.computeVertexNormals();
   return geometry;
 }
