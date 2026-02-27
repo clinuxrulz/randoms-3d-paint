@@ -316,11 +316,21 @@ const App: Component = () => {
     if (!filename.toLowerCase().endsWith(".randoms-3d-paint")) {
       filename += ".randoms-3d-paint";
     }
-    const fileHandle = await window.showSaveFilePicker({
-      suggestedName: filename,
-    });
-    const writable = await fileHandle.createWritable();
-    await model.save(writable);
+    if ("showSaveFilePicker" in window) {
+      const fileHandle = await window.showSaveFilePicker({
+        suggestedName: filename,
+      });
+      const writable = await fileHandle.createWritable();
+      await model.save(writable);
+    } else {
+      const { readable, writable } = new TransformStream();
+      const blobPromise = new Response(readable).blob();
+
+      await model.save(writable);
+
+      const blob = await blobPromise;
+      FileSaver.saveAs(blob, filename);
+    }
   };
   let march_ = async () => {
     let pointsAndTriangleIndices = await model.marchCubes({
