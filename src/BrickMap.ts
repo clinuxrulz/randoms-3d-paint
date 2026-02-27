@@ -273,6 +273,43 @@ export class BrickMap {
     return this;
   }
 
+  updateFromBuffers(params: {
+    indirectionData: Uint8Array,
+    atlasData: Uint8Array,
+  }) {
+    if (this.indirectionData.length === 0) {
+      this.indirectionData = new Uint8Array(GRID_DATA_SIZE);
+    }
+    if (this.atlasData.length === 0) {
+      this.atlasData = new Uint8Array(ATLAS_RES ** 3);
+    }
+    this.indirectionData.set(params.indirectionData);
+    this.atlasData.set(params.atlasData);
+    
+    // Rebuild the brickMap Map and freeBricks
+    this.brickMap.clear();
+    let usedBricks = new Set<number>();
+    for (let i = 0, gridIdx = 0; i < this.indirectionData.length; i += 4, ++gridIdx) {
+      let state = this.indirectionData[i+3];
+      if (state == 255) {
+        let ax = this.indirectionData[i];
+        let ay = this.indirectionData[i+1];
+        let az = this.indirectionData[i+2];
+        let aIdx = az * (BRICKS_PER_RES * BRICKS_PER_RES)
+                 + ay * BRICKS_PER_RES
+                 + ax;
+        this.brickMap.set(gridIdx, aIdx);
+        usedBricks.add(aIdx);
+      }
+    }
+    this.freeBricks.splice(0, this.freeBricks.length);
+    for (let i = 0; i < MAX_BRICKS; ++i) {
+      if (!usedBricks.has(i)) {
+        this.freeBricks.push(i);
+      }
+    }
+  }
+
   get(x: number, y: number, z: number): number {
     const gx = x >> BRICK_L_RES_BITS;
     const gy = y >> BRICK_L_RES_BITS;

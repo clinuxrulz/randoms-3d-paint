@@ -29,29 +29,22 @@ export class PaintMode implements Mode {
       params.screenCoordsToRay(pointerPos, result);
       return result;
     });
-    let [ pointUnderRayAsync, ] = createResource(ray, async (ray) => {
-      if (ray == undefined) {
-        return { result: undefined, };
+    let pointUnderRay = createMemo(() => {
+      let ray2 = ray();
+      if (ray2 == undefined) {
+        return undefined;
       }
-      let { hit, t } = await params.model.march(ray.origin, ray.direction);
+      let t: [ number, ] = [ 0.0, ];
+      let hit = params.model.brickMap.march(ray2.origin, ray2.direction, t);
       if (!hit) {
-        return { result: undefined, };
+        return undefined;
       }
       let pt = new THREE.Vector3()
-        .copy(ray.direction)
+        .copy(ray2.direction)
         .multiplyScalar(t[0])
-        .add(ray.origin);
-      return { result: pt, };
+        .add(ray2.origin);
+      return pt;
     });
-    let pointUnderRay = createMemo<THREE.Vector3|undefined>(on<{result:THREE.Vector3|undefined}|undefined,THREE.Vector3|undefined>(
-      () => pointUnderRayAsync(),
-      (pt, _, prev) => {
-        if (pt == undefined) {
-          return prev;
-        }
-        return pt.result;
-      },
-    ));
     let lastSeenPointUnderRayWhilePointerDown = createMemo<THREE.Vector3 | undefined>((prev) => {
       if (!params.pointerDown) {
         return undefined;

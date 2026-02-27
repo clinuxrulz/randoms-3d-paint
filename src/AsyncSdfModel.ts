@@ -1,12 +1,12 @@
 import * as THREE from "three";
 import { Operation, OperationShape } from "./operations";
 import SdfModelWorker from "./sdf-model-worker?worker";
-import { ATLAS_RES, BRICK_P_RES, BrickMapTHREETextures, BRICKS_PER_RES, GRID_RES } from "./BrickMap";
-import { IndirectStorageBufferAttribute } from "three/webgpu";
+import { ATLAS_RES, BRICK_P_RES, BrickMap, BrickMapTHREETextures, BRICKS_PER_RES, GRID_RES } from "./BrickMap";
 
 export class AsyncSdfModel {
   private worker: Worker | undefined = undefined;
   private callbackMap = new Map<string, (params: any) => void>();
+  readonly brickMap = new BrickMap();
 
   dispose(): void {
     if (this.worker === undefined) {
@@ -175,6 +175,13 @@ export class AsyncSdfModel {
       params.indirectionData = new Uint8Array(params.indirectionData);
       params.atlasData = new Uint8Array(params.atlasData);
       params.colourData = new Uint8Array(params.colourData);
+
+      // Update local brickMap
+      this.brickMap.updateFromBuffers({
+        indirectionData: params.indirectionData,
+        atlasData: params.atlasData,
+      });
+
       doneResolve(params);
     });
     worker.postMessage({
