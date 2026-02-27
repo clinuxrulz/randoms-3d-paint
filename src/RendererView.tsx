@@ -20,6 +20,7 @@ export type RendererViewController = {
   screenCoordsToRay: (screenCoords: THREE.Vector2, out_ray: THREE.Ray) => void,
   getThreeObjectsUnderScreenCoords: (screenCoords: THREE.Vector2) => Generator<THREE.Object3D>,
   renderer: Accessor<THREE.WebGLRenderer | undefined>,
+  getSdfUniforms: () => THREE.ShaderMaterialParameters["uniforms"] | undefined,
 };
 
 const RendererView: Component<{
@@ -423,6 +424,7 @@ const RendererView: Component<{
       }
     },
     renderer,
+    getSdfUniforms: () => material()?.uniforms,
   });
   let updateSize: () => void;
   onMount(() => {

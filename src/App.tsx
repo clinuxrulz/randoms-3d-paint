@@ -402,9 +402,9 @@ void main() { gl_FragColor = vec4(colour(vWorldPosition).rgb, 1.0); }
     let shaderParams: THREE.ShaderMaterialParameters = {
       vertexShader: bakeVertexShader,
       fragmentShader: bakeFragmentShader,
-      side: THREE.DoubleSide
+      side: THREE.DoubleSide,
+      uniforms: rendererViewController()?.getSdfUniforms(),
     };
-    let bmTxt = model.initTexturesThreeJs(shaderParams);
     const bakeMaterial = new THREE.ShaderMaterial(shaderParams);
     const originalMaterial = mesh.material;
     const oldTarget = renderer.getRenderTarget();
