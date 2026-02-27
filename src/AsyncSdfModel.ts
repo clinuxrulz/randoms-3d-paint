@@ -602,7 +602,7 @@ export class AsyncSdfModel {
     iTex.wrapT = THREE.ClampToEdgeWrapping;
     iTex.wrapR = THREE.ClampToEdgeWrapping;
     iTex.unpackAlignment = 1;
-    iTex.needsUpdate = true;
+    iTex.needsUpdate = false;
     let aTex = new THREE.Data3DTexture(
       null,
       ATLAS_RES,
@@ -618,7 +618,7 @@ export class AsyncSdfModel {
     aTex.wrapT = THREE.ClampToEdgeWrapping;
     aTex.wrapR = THREE.ClampToEdgeWrapping;
     aTex.unpackAlignment = 1;
-    aTex.needsUpdate = true;
+    aTex.needsUpdate = false;
     let cTex = new THREE.Data3DTexture(
       null,
       ATLAS_RES,
@@ -634,7 +634,7 @@ export class AsyncSdfModel {
     cTex.wrapT = THREE.ClampToEdgeWrapping;
     cTex.wrapR = THREE.ClampToEdgeWrapping;
     cTex.unpackAlignment = 1;
-    cTex.needsUpdate = true;
+    cTex.needsUpdate = false;
     uniforms.uIndirectionTex = { value: iTex, };
     uniforms.uAtlasTex = { value: aTex, };
     uniforms.uColourTex = { value: cTex, };
@@ -703,7 +703,9 @@ export class AsyncSdfModel {
       const gl = renderer.getContext() as WebGL2RenderingContext;
       let textureProperties = renderer.properties.get(textures.aTex);
       if (lockResult.dirtyAtlasBricks == "all") {
-        textures.aTex.needsUpdate = true;
+        if (lockResult.atlasData && lockResult.atlasData.length > 0) {
+          textures.aTex.needsUpdate = true;
+        }
         return;
       }
       if (!(textureProperties as any).__webglTexture) {
@@ -762,7 +764,9 @@ export class AsyncSdfModel {
     const gl = renderer.getContext() as WebGL2RenderingContext;
     let textureProperties = renderer.properties.get(textures.cTex);
     if (lockResult.dirtyColourBricks == "all") {
-      textures.cTex.needsUpdate = true;
+      if (lockResult.colourData && lockResult.colourData.length > 0) {
+        textures.cTex.needsUpdate = true;
+      }
       return;
     }
     if (!(textureProperties as any).__webglTexture) {
