@@ -1,0 +1,2 @@
+overrides:
+  vite-plugin-solid-local: link:../tmp/vite-plugin-solid-local

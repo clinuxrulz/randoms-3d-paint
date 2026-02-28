@@ -20,11 +20,11 @@
     "jsdom": "^27.4.0",
     "typescript": "^5.7.2",
     "vite": "^7.1.4",
-    "vite-plugin-solid": "https://pkg.pr.new/vite-plugin-solid@e82bce6",
+    "vite-plugin-solid": "file:./tmp/vite-plugin-solid-local",
     "vitest": "^4.0.17"
   },
   "dependencies": {
-    "@solidjs/signals": "0.10.8",
+    "@solidjs/signals": "0.11.1",
     "@solidjs/web": "2.0.0-experimental.15",
     "@tailwindcss/vite": "^4.1.18",
     "daisyui": "^5.5.14",
@@ -33,6 +33,7 @@
     "solid-js": "2.0.0-experimental.15",
     "tailwindcss": "^4.1.18",
     "three": "^0.182.0",
+
     "xatlas-three": "^0.2.1"
   }
 }
