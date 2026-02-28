@@ -528,9 +528,9 @@ const RendererView: Component<{
       }
     }
   );
-  createRenderEffect(
-    () => props.overlayObject3D,
-    (overlayObject3D) => {
+  createEffect(
+    () => {
+      let overlayObject3D = props.overlayObject3D;
       if (overlayObject3D == undefined) {
         return;
       }
@@ -538,7 +538,9 @@ const RendererView: Component<{
       onCleanup(() => {
         scene.remove(overlayObject3D);
       });
-      untrack(() => rerender());
+    },
+    () => {
+      rerender();
     },
   );
   return (
