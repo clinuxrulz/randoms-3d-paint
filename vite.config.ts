@@ -1,11 +1,10 @@
 import { defineConfig } from 'vite';
 import tailwindcss from '@tailwindcss/vite';
 import solidPlugin from 'vite-plugin-solid';
-import devtools from 'solid-devtools/vite';
 
 export default defineConfig({
   base: "",
-  plugins: [tailwindcss(), devtools(), solidPlugin()],
+  plugins: [tailwindcss(), solidPlugin()],
   server: {
     port: 3000,
   },

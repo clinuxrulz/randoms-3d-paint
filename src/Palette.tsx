@@ -27,10 +27,10 @@ const Palette: Component<{
             style={{
               "width": `${props.squareSize}px`,
               "height": `${props.squareSize}px`,
-              "background-color": `#${colour.colour.getHexString()}`,
+              "background-color": `#${colour().colour.getHexString()}`,
               "cursor": "pointer",
             }}
-            onClick={() => props.setSelectedColour(colour.id)}
+            onClick={() => props.setSelectedColour(colour().id)}
           />
         )}
       </For>

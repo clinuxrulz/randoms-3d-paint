@@ -1,4 +1,4 @@
-import { Accessor, Component, createComputed, createMemo, on, untrack } from "solid-js";
+import { Accessor, Component, createRenderEffect, createMemo, untrack } from "solid-js";
 import { Mode } from "./Mode";
 import { ModeParams } from "./ModeParams";
 
@@ -9,8 +9,8 @@ export class DrawMode implements Mode {
   constructor(params: ModeParams) {
     let hasCanvasSize = createMemo(() => params.canvasSize() != undefined);
     let hasPointerPos = createMemo(() => params.pointerPos() != undefined);
-    createComputed(on(
-      [ hasCanvasSize, hasPointerPos, params.pointerDown, ],
+    createRenderEffect(
+      () => [ hasCanvasSize(), hasPointerPos(), params.pointerDown(), ] as const,
       ([ hasCanvasSize, hasPointerPos, pointerDown, ]) => {
         if (!hasCanvasSize) {
           return;
@@ -33,8 +33,8 @@ export class DrawMode implements Mode {
         }
         // drawInBrickmap(lastX, lastY);
         // params.updateSdf();
-        createComputed(on(
-          pointerPos,
+        createRenderEffect(
+          () => pointerPos(),
           (pointerPos) => {
             let canvasSize2 = untrack(canvasSize);
             let x = pointerPos.x - 0.5 * canvasSize2.x;
@@ -49,11 +49,10 @@ export class DrawMode implements Mode {
             lastX = x;
             lastY = y;
             // params.updateSdf();
-          },
-          { defer: true, },
-        ));
+          }
+        );
       },
-    ));
+    );
     let instructions: Component = () => (
       <button
         class="btn btn-primary"

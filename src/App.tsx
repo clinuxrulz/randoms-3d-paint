@@ -1,9 +1,9 @@
-import { batch, createComputed, createMemo, createSignal, on, onCleanup, onMount, Show, untrack, type Component } from 'solid-js';
+import { createRenderEffect, createEffect, createMemo, createSignal, onCleanup, Show, untrack, type Component } from 'solid-js';
 import * as THREE from "three";
 import { GLTFExporter } from "three/addons/exporters/GLTFExporter.js";
 import { AsyncSdfModel } from './AsyncSdfModel';
 import RendererView, { RendererViewController } from './RendererView';
-import { createStore } from 'solid-js/store';
+import { createStore } from 'solid-js';
 import { Mode } from './modes/Mode';
 import { ModeParams } from './modes/ModeParams';
 import { IdleMode } from './modes/IdleMode';
@@ -61,13 +61,14 @@ const App: Component = () => {
     palette: initPalette,
     selectedColourById: initPalette[50].id,
     showingMarchedGeometry: undefined,
+    loadingProgress: undefined,
   });
   onCleanup(() => {
     let geometry = state.showingMarchedGeometry;
     if (geometry != undefined) {
       geometry.dispose();
     }
-    setState("showingMarchedGeometry", undefined);
+    setState((s) => { s.showingMarchedGeometry = undefined; });
   });
   let currentColour = createMemo(() => {
     let colourId = state.selectedColourById;
@@ -78,18 +79,18 @@ const App: Component = () => {
   });
 
   let model = new AsyncSdfModel();
-  createComputed(on(
-    currentColour,
+  createRenderEffect(
+    () => currentColour(),
     (colour) => {
       if (colour == undefined) {
         return;
       }
       model.setColour(colour);
     }
-  ));
+  );
 
   let [ rendererViewController, setRendererViewController, ] = createSignal<RendererViewController>();
-  let setMode = (mode: { new(modeParams: ModeParams): Mode, }) => setState("mkMode", () => mode);
+  let setMode = (mode: { new(modeParams: ModeParams): Mode, }) => setState((s) => { s.mkMode = mode });
   let modeParams: ModeParams = {
     endMode: () => setMode(IdleMode),
     model,
@@ -126,13 +127,19 @@ const App: Component = () => {
   let mode = createMemo(() => new state.mkMode(modeParams));
   let ModeInstructions: Component = () => (
     <Show when={mode().instructions} keyed>
-      {(Instructions) => (<Instructions/>)}
+      {(Instructions) => {
+        const Comp = Instructions();
+        return <Comp/>;
+      }}
     </Show>
   );
   let disableOrbit = createMemo(() => mode().disableOrbit?.() ?? false);
   let modeOverlayObject3D = createMemo(() => mode().overlayObject3D?.());
   let useTransformControlOnObject3D = createMemo(() => mode().useTransformControlOnObject3D?.());
   let [ renderDiv, setRenderDiv, ] = createSignal<HTMLDivElement>();
+  createEffect(() => {}, () => {
+    setRenderDiv(document.getElementById("render-div") as HTMLDivElement);
+  });
   let [ isTransformDragging, setTransformDragging, ] = createSignal(false);
   let areTransformControlsVisible = createMemo(() => useTransformControlOnObject3D() != undefined);
   // test data
@@ -175,9 +182,9 @@ const App: Component = () => {
     let rect = renderDiv2.getBoundingClientRect();
     let x = e.clientX - rect.left;
     let y = e.clientY - rect.top;
-    batch(() => {
-      setState("pointerPos", new THREE.Vector2(x, y));
-      setState("pointerDown", true);
+    setState((s) => {
+      s.pointerPos = new THREE.Vector2(x, y);
+      s.pointerDown = true;
     });
     pointerDownStartTime = performance.now();
   }
@@ -193,7 +200,7 @@ const App: Component = () => {
     let rect = renderDiv2.getBoundingClientRect();
     let x = e.clientX - rect.left;
     let y = e.clientY - rect.top;
-    setState("pointerPos", new THREE.Vector2(x, y));
+    setState((s) => { s.pointerPos = new THREE.Vector2(x, y) });
   };
   let onPointerUp = (e: PointerEvent) => {
     if (isTransformDragging()) {
@@ -212,10 +219,8 @@ const App: Component = () => {
     let rect = renderDiv2.getBoundingClientRect();
     let x = e.clientX - rect.left;
     let y = e.clientY - rect.top;
-    batch(() => {
-      //setState("pointerPos", undefined);
-      setState("pointerDown", false);
-    });
+    //setState("pointerPos", undefined);
+    setState((s) => { s.pointerDown = false });
     if (time != undefined && time < 300) {
       onClick();
     }
@@ -258,16 +263,16 @@ const App: Component = () => {
     const fileHandle = await dir.getFileHandle("quicksave.dat");
     const file = await fileHandle.getFile();
     const readable = file.stream();
-    setState("loadingProgress", 0);
+    setState((s) => { s.loadingProgress = 0 });
     try {
       for await (const p of model.load(readable)) {
-        setState("loadingProgress", p.workDone / p.totalWork);
+        setState((s) => { s.loadingProgress = p.workDone / p.totalWork });
         let controller = rendererViewController();
         await controller?.onBrickMapShapeAndPaintChanged();
         model.resume();
       }
     } finally {
-      setState("loadingProgress", undefined);
+      setState((s) => { s.loadingProgress = undefined });
     }
     // Final update after load completes, in case some updates were missed or worker finished without signalling resume.
     {
@@ -285,16 +290,16 @@ const App: Component = () => {
   };
   let load = async (file: File) => {
     const readable = file.stream();
-    setState("loadingProgress", 0);
+    setState((s) => { s.loadingProgress = 0 });
     try {
       for await (const p of model.load(readable)) {
-        setState("loadingProgress", p.workDone / p.totalWork);
+        setState((s) => { s.loadingProgress = p.workDone / p.totalWork });
         let controller = rendererViewController();
         await controller?.onBrickMapShapeAndPaintChanged();
         model.resume();
       }
     } finally {
-      setState("loadingProgress", undefined);
+      setState((s) => { s.loadingProgress = undefined });
     }
     // Final update after load completes, in case some updates were missed or worker finished without signalling resume.
     {
@@ -347,14 +352,14 @@ const App: Component = () => {
       pointsAndTriangleIndices.points[i] *= 50.0;
     }
     let geometry = pointsAndTriangleIndicesToGeometry(pointsAndTriangleIndices);
-    setState("showingMarchedGeometry", geometry);
+    setState((s) => { s.showingMarchedGeometry = geometry });
   };
   let clearMarch = () => {
     if (state.showingMarchedGeometry == undefined) {
       return;
     }
     state.showingMarchedGeometry.dispose();
-    setState("showingMarchedGeometry", undefined);
+    setState((s) => { s.showingMarchedGeometry = undefined });
     modeParams.rerender();
   };
   let material: THREE.Material = new THREE.MeshStandardMaterial({ color: "blue", });
@@ -483,7 +488,7 @@ void main() { gl_FragColor = vec4(colour(vWorldPosition).rgb, 1.0); }
       }}
     >
       <div
-        ref={setRenderDiv}
+        id="render-div"
         style={{
           position: "absolute",
           left: "0",
@@ -585,16 +590,15 @@ void main() { gl_FragColor = vec4(colour(vWorldPosition).rgb, 1.0); }
             Save SS
           </button>
           {untrack(() => {
-            let [ fileInput, setFileInput, ] = createSignal<HTMLInputElement>();
             return (<>
               <button
                 class="btn btn-primary ml-2"
-                onClick={() => fileInput()?.click()}
+                onClick={() => (document.getElementById("file-input") as HTMLInputElement)?.click()}
               >
                 Load
               </button>
               <input
-                ref={setFileInput}
+                id="file-input"
                 type="file"
                 onChange={(e) => {
                   let files = e.currentTarget.files;
@@ -677,7 +681,7 @@ void main() { gl_FragColor = vec4(colour(vWorldPosition).rgb, 1.0); }
                 checked={state.pixelSize == 1}
                 onChange={(e) => {
                   if (e.currentTarget.checked) {
-                    setState("pixelSize", 1);
+                    setState((s) => { s.pixelSize = 1 });
                   }
                 }}
               />
@@ -689,7 +693,7 @@ void main() { gl_FragColor = vec4(colour(vWorldPosition).rgb, 1.0); }
                 checked={state.pixelSize == 2}
                 onChange={(e) => {
                   if (e.currentTarget.checked) {
-                    setState("pixelSize", 2);
+                    setState((s) => { s.pixelSize = 2 });
                   }
                 }}
               />
@@ -701,7 +705,7 @@ void main() { gl_FragColor = vec4(colour(vWorldPosition).rgb, 1.0); }
                 checked={state.pixelSize == 4}
                 onChange={(e) => {
                   if (e.currentTarget.checked) {
-                    setState("pixelSize", 4);
+                    setState((s) => { s.pixelSize = 4 });
                   }
                 }}
               />
@@ -728,7 +732,7 @@ void main() { gl_FragColor = vec4(colour(vWorldPosition).rgb, 1.0); }
             addColour={() => { return { id: "", }; }}
             removeColour={() => {}}
             selectedColourById={state.selectedColourById}
-            setSelectedColour={(colourId) => setState("selectedColourById", colourId)}
+            setSelectedColour={(colourId) => setState((s) => { s.selectedColourById = colourId })}
           />
         </div>
       </div>

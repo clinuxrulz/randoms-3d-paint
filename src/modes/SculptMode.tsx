@@ -1,9 +1,9 @@
-import { Accessor, Component, createComputed, createMemo, createResource, on, onCleanup, untrack } from "solid-js";
+import { Accessor, Component, createRenderEffect, createMemo, onCleanup, untrack } from "solid-js";
 import * as THREE from "three";
 import { Mode } from "./Mode";
 import { ModeParams } from "./ModeParams";
 
-import { createStore } from "solid-js/store";
+import { createStore } from "solid-js";
 import { throttle } from "../util";
 import { BrickMap } from "../BrickMap";
 
@@ -50,7 +50,7 @@ export class SculptMode implements Mode {
       return pt;
     });
     let lastSeenPoiuntUnderRayWhilePointerDown = createMemo<THREE.Vector3 | undefined>((prev) => {
-      if (!params.pointerDown) {
+      if (!params.pointerDown()) {
         return undefined;
       }
       let pt = pointUnderRay();
@@ -60,16 +60,16 @@ export class SculptMode implements Mode {
       return pt;
     });
     let lastPt: THREE.Vector3 | undefined = undefined;
-    createComputed(on(
-      params.pointerDown,
+    createRenderEffect(
+      () => params.pointerDown(),
       (pointerDown) => {
         if (!pointerDown) {
           virtualBrickMap.copy(params.model.brickMap);
           return;
         }
         onCleanup(() => lastPt = undefined);
-        createComputed(on(
-          lastSeenPoiuntUnderRayWhilePointerDown,
+        createRenderEffect(
+          () => lastSeenPoiuntUnderRayWhilePointerDown(),
           (nextPt: THREE.Vector3 | undefined) => {
             if (nextPt == undefined) {
               return;
@@ -148,15 +148,14 @@ export class SculptMode implements Mode {
               }
               lastPt = nextPt;
             }
-          },
-        ));
+          }
+        );
       },
-      { defer: true, },
-    ));
+    );
     let geo = new THREE.SphereGeometry(0.5 * untrack(() => state.brushSize) * 10.0);
     let mat = new THREE.MeshStandardMaterial({ color: "blue", });
     let mesh = new THREE.Mesh(geo, mat);
-    createComputed(on(
+    createRenderEffect(
       () => state.brushSize,
       (brushSize) => {
         geo.dispose();
@@ -164,7 +163,7 @@ export class SculptMode implements Mode {
         mesh = new THREE.Mesh(geo, mat);
         params.rerender();
       },
-    ));
+    );
     onCleanup(() => {
       geo.dispose();
       mat.dispose();
@@ -182,7 +181,7 @@ export class SculptMode implements Mode {
               checked={state.isNegativeBrush}
               onChange={(e) => {
                 if (e.currentTarget.checked) {
-                  setState("isNegativeBrush", true);
+                  setState((s) => { s.isNegativeBrush = true });
                 }
               }}
             />
@@ -194,7 +193,7 @@ export class SculptMode implements Mode {
               checked={!state.isNegativeBrush}
               onChange={(e) => {
                 if (e.currentTarget.checked) {
-                  setState("isNegativeBrush", false);
+                  setState((s) => { s.isNegativeBrush = false });
                 }
               }}
             />
@@ -213,7 +212,7 @@ export class SculptMode implements Mode {
               if (Number.isNaN(x)) {
                 return;
               }
-              setState("brushSize", x);
+              setState((s) => { s.brushSize = x });
             }}
           />
         </label>
@@ -231,7 +230,7 @@ export class SculptMode implements Mode {
               if (Number.isNaN(x)) {
                 return;
               }
-              setState("softness", x);
+              setState((s) => { s.softness = x });
             }}
           />
         </label>

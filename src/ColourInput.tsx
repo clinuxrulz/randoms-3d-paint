@@ -1,6 +1,5 @@
-import { Component, createMemo, createSignal, onMount, Show } from "solid-js";
-import { createStore } from "solid-js/store";
-import { Portal } from "solid-js/web";
+import { Component, createMemo, createSignal, createEffect, Show, createStore } from "solid-js";
+import { Portal } from "@solidjs/web";
 import * as THREE from "three";
 import Palette from "./Palette";
 
@@ -18,6 +17,9 @@ const ColourInput: Component<{
     showingPalette: false,
   });
   let [ colourDiv, setColourDiv, ] = createSignal<HTMLDivElement>();
+  createEffect(() => {}, () => {
+    setColourDiv(document.getElementById("colour-div") as HTMLDivElement);
+  });
   let divColour = createMemo(() => {
     if (props.selectedColourById == undefined) {
       return "";
@@ -34,23 +36,24 @@ const ColourInput: Component<{
       return undefined;
     }
     let [ paletteDiv, setPaletteDiv, ] = createSignal<HTMLDivElement>();
-    onMount(() => {
-      let paletteDiv2 = paletteDiv();
+    createEffect(() => {}, () => {
+      let paletteDiv2 = document.getElementById("palette-div") as HTMLDivElement;
+      setPaletteDiv(paletteDiv2);
       paletteDiv2?.focus();
     });
     let rect = colourDiv2.getBoundingClientRect();
     return (
       <div
-        ref={setPaletteDiv}
+        id="palette-div"
         style={{
           "position": "absolute",
           "left": `${rect.right}px`,
           "top": `${rect.top}px`,
         }}
         onFocusOut={() => {
-          setState("showingPalette", false);
+          setState((s) => { s.showingPalette = false });
         }}
-        tabIndex={-1}
+        tabindex={-1}
       >
         <Palette
           numColumns={8}
@@ -61,7 +64,7 @@ const ColourInput: Component<{
           selectedColourById={props.selectedColourById}
           setSelectedColour={(colourId) => {
             props.setSelectedColour(colourId);
-            setState("showingPalette", false);
+            setState((s) => { s.showingPalette = false });
           }}
         />
       </div>
@@ -69,7 +72,7 @@ const ColourInput: Component<{
   };
   return (
     <div
-      ref={setColourDiv}
+      id="colour-div"
       class="m-2"
       style={{
         width: `${props.squareSize}px`,
@@ -78,7 +81,7 @@ const ColourInput: Component<{
         "cursor": "pointer",
       }}
       onClick={() => {
-        setState("showingPalette", true);
+        setState((s) => { s.showingPalette = true });
       }}
     >
       <Show when={state.showingPalette}>

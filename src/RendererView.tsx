@@ -1,4 +1,4 @@
-import { Accessor, batch, Component, createComputed, createMemo, createResource, createSignal, on, onCleanup, onMount, Show, untrack } from "solid-js";
+import { Accessor, Component, createRenderEffect, createEffect, createMemo, createSignal, onCleanup, Show, untrack } from "solid-js";
 import * as THREE from "three";
 import { AsyncSdfModel } from "./AsyncSdfModel";
 
@@ -53,18 +53,20 @@ const RendererView: Component<{
     rimLight.position.set(0, -1, -1);
     scene.add(rimLight);
   }
-  let [brickMapShaderCode] = createResource(() => props.model.writeShaderCode());
+  let brickMapShaderCode = createMemo(() => props.model.writeShaderCode());
 
-  createComputed(() => {
-    const code = brickMapShaderCode();
-    if (!code) return;
-    console.log(
-      code
-        .split("\n")
-        .map((line, idx) => `${idx + 1}: ${line}`)
-        .join("\n")
-    );
-  });
+  createRenderEffect(
+    () => brickMapShaderCode(),
+    (code) => {
+      if (!code) return;
+      console.log(
+        code
+          .split("\n")
+          .map((line, idx) => `${idx + 1}: ${line}`)
+          .join("\n")
+      );
+    }
+  );
 
   let material = createMemo(() => {
     const code = brickMapShaderCode();
@@ -427,11 +429,12 @@ const RendererView: Component<{
     getSdfUniforms: () => material()?.uniforms,
   });
   let updateSize: () => void;
-  onMount(() => {
-    let canvas2 = canvas();
+  createEffect(() => {}, () => {
+    let canvas2 = document.getElementById("main-canvas") as HTMLCanvasElement;
     if (canvas2 == undefined) {
       return;
     }
+    setCanvas(canvas2);
     let camera2 = new THREE.PerspectiveCamera(
       FOV_Y,
       1.0,
@@ -467,11 +470,10 @@ const RendererView: Component<{
     let resizeObserver = new ResizeObserver(() => {
       updateSize();
     });
-    createComputed(on(
+    createRenderEffect(
       () => props.pixelSize,
-      () => updateSize(),
-      { defer: true, }
-    ));
+      () => updateSize()
+    );
     resizeObserver.observe(canvas2);
     onCleanup(() => {
       resizeObserver.unobserve(canvas2);
@@ -484,7 +486,7 @@ const RendererView: Component<{
     let transformControls2 = new TransformControls(camera2, canvas2);
     //let dummy = new THREE.Object3D();
     //transformControls2.attach(dummy);
-    createComputed(on(
+    createRenderEffect(
       () => props.useTransformControlOnObject3D,
       (useTransformControlOnObject3D) => {
         if (useTransformControlOnObject3D == undefined) {
@@ -493,39 +495,40 @@ const RendererView: Component<{
           transformControls2.attach(useTransformControlOnObject3D);
         }
       },
-    ));
+    );
     let [ transformDragging, setTransformDragging, ] = createSignal(false);
     transformControls2.addEventListener("dragging-changed", (e) => {
       let dragging = e.value as boolean;
       setTransformDragging(dragging);
       props.onDragingEvent(dragging);
     });
-    createComputed(() => {
-      orbitControls.enabled = !(transformDragging() || props.disableOrbit);
-    });
+    createRenderEffect(
+      () => [ transformDragging(), props.disableOrbit ] as const,
+      ([ transformDragging, disableOrbit ]) => {
+        orbitControls.enabled = !(transformDragging || disableOrbit);
+      }
+    );
     transformControls2.addEventListener("change", () => {
       rerender();
     });
     //scene.add(dummy);
     scene.add(transformControls2.getHelper());
-    batch(() => {
-      setCamera(camera2);
-      setRenderer(renderer2);
-      setOrbitControls(orbitControls);
-      setTransformControls(transformControls2);
-    });
+    setCamera(camera2);
+    setRenderer(renderer2);
+    setOrbitControls(orbitControls);
+    setTransformControls(transformControls2);
     rerender();
   });
-  createComputed(on(
-    material,
+  createRenderEffect(
+    () => material(),
     (mat) => {
       if (mat != undefined) {
         updateSize?.();
         rerender();
       }
     }
-  ));
-  createComputed(on(
+  );
+  createRenderEffect(
     () => props.overlayObject3D,
     (overlayObject3D) => {
       if (overlayObject3D == undefined) {
@@ -537,11 +540,11 @@ const RendererView: Component<{
       });
       untrack(() => rerender());
     },
-  ));
+  );
   return (
     //<Show when={material()} fallback={<div>Loading...</div>}>
       <canvas
-        ref={setCanvas}
+        id="main-canvas"
         style={{
           width: "100%",
           height: "100%",

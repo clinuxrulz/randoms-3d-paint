@@ -1,11 +1,18 @@
-import { Accessor, batch, Component, createComputed, createMemo, Match, on, onCleanup, Switch } from "solid-js";
+import { Accessor, Component, createRenderEffect, createMemo, Match, onCleanup, Switch } from "solid-js";
 import * as THREE from "three";
 import { Mode } from "./Mode";
 import { ModeParams } from "./ModeParams";
-import { createStore } from "solid-js/store";
+import { createStore } from "solid-js";
 import { NoTrack } from "../util";
 
 type Primitive = "Sphere" | "Cube";
+
+interface ThreePrimitiveResult {
+  primitive: Primitive;
+  autoCleanup: boolean;
+  cleanup: () => void;
+  object: THREE.Object3D;
+}
 
 const INIT_CUBE_SIZE = 1500.0;
 const INIT_SPHERE_RADIUS = 1000.0;
@@ -34,31 +41,28 @@ export class InsertPrimitivesMode implements Mode {
       for (let primitive of state.existingPrimitives) {
         primitive.value.cleanup();
       }
-      setState("existingPrimitives", []);
+      setState((s) => { s.existingPrimitives = [] });
     });
     let insert = (primitive: Primitive) => {
-      setState("insertingPrimitive", primitive);
+      setState((s) => { s.insertingPrimitive = primitive });
     };
     let placeIt = () => {
       let primitive = threePrimitive();
       if (primitive != undefined) {
         primitive.autoCleanup = false;
-        batch(() => {
-          setState("insertingPrimitive", undefined);
-          setState(
-            "existingPrimitives",
-            (x) => [
-              ...x,
-              new NoTrack({
-                primitive: primitive.primitive,
-                object: primitive.object,
-                cleanup: primitive.cleanup,
-              }),
-            ],
-          );
+        setState((s) => {
+          s.insertingPrimitive = undefined;
+          s.existingPrimitives = [
+            ...state.existingPrimitives,
+            new NoTrack({
+              primitive: primitive.primitive,
+              object: primitive.object,
+              cleanup: primitive.cleanup,
+            }),
+          ];
         });
       } else if (state.movingExistingPrimitive != undefined) {
-        setState("movingExistingPrimitive", undefined);
+        setState((s) => { s.movingExistingPrimitive = undefined });
       }
     };
     let finished = () => {
@@ -103,44 +107,42 @@ export class InsertPrimitivesMode implements Mode {
       params.updateSdf();
       params.endMode();
     };
-    let threePrimitive = createMemo(on(
-      () => state.insertingPrimitive,
-      (primitive) => {
-        if (primitive == undefined) {
-          return undefined;
+    let threePrimitive = createMemo((): ThreePrimitiveResult | undefined => {
+      let primitive = state.insertingPrimitive;
+      if (primitive == undefined) {
+        return undefined;
+      }
+      let geo: THREE.BufferGeometry;
+      let mat = new THREE.MeshStandardMaterial({ color: "blue", });
+      switch (primitive) {
+        case "Cube": {
+          geo = new THREE.BoxGeometry(INIT_CUBE_SIZE, INIT_CUBE_SIZE, INIT_CUBE_SIZE);
+          break;
         }
-        let geo: THREE.BufferGeometry;
-        let mat = new THREE.MeshStandardMaterial({ color: "blue", });
-        switch (primitive) {
-          case "Cube": {
-            geo = new THREE.BoxGeometry(INIT_CUBE_SIZE, INIT_CUBE_SIZE, INIT_CUBE_SIZE);
-            break;
-          }
-          case "Sphere": {
-            geo = new THREE.SphereGeometry(INIT_SPHERE_RADIUS);
-            break;
-          }
-          default:
-            throw new Error("Unreachable");
+        case "Sphere": {
+          geo = new THREE.SphereGeometry(INIT_SPHERE_RADIUS);
+          break;
         }
-        let mesh = new THREE.Mesh(geo, mat);
-        let result = {
-          primitive,
-          autoCleanup: true,
-          cleanup: () => {
-            geo.dispose();
-            mat.dispose();
-          },
-          object: mesh,
-        };
-        onCleanup(() => {
-          if (result.autoCleanup) {
-            result.cleanup();
-          }
-        });
-        return result;
-      },
-    ));
+        default:
+          throw new Error("Unreachable");
+      }
+      let mesh = new THREE.Mesh(geo, mat);
+      let result: ThreePrimitiveResult = {
+        primitive,
+        autoCleanup: true,
+        cleanup: () => {
+          geo.dispose();
+          mat.dispose();
+        },
+        object: mesh,
+      };
+      onCleanup(() => {
+        if (result.autoCleanup) {
+          result.cleanup();
+        }
+      });
+      return result;
+    });
     let instructions: Component = () => (
       <Switch>
         <Match when={state.insertingPrimitive == undefined && state.movingExistingPrimitive == undefined}>
@@ -224,7 +226,7 @@ export class InsertPrimitivesMode implements Mode {
         }
         for (let object of params.getThreeObjectsUnderScreenCoords(pt)) {
           if (existingPrimitiveSet.has(object)) {
-            setState("movingExistingPrimitive", object);
+            setState((s) => { s.movingExistingPrimitive = object });
             break;
           }
         }

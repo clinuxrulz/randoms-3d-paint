@@ -1,9 +1,9 @@
-import { Accessor, Component, createComputed, createMemo, createResource, on, onCleanup, untrack } from "solid-js";
+import { Accessor, Component, createRenderEffect, createMemo, onCleanup, untrack } from "solid-js";
 import * as THREE from "three";
 import { Mode } from "./Mode";
 import { ModeParams } from "./ModeParams";
 
-import { createStore } from "solid-js/store";
+import { createStore } from "solid-js";
 import { throttle } from "../util";
 
 export class PaintMode implements Mode {
@@ -46,7 +46,7 @@ export class PaintMode implements Mode {
       return pt;
     });
     let lastSeenPointUnderRayWhilePointerDown = createMemo<THREE.Vector3 | undefined>((prev) => {
-      if (!params.pointerDown) {
+      if (!params.pointerDown()) {
         return undefined;
       }
       let pt = pointUnderRay();
@@ -57,15 +57,15 @@ export class PaintMode implements Mode {
     });
     let defaultColour = new THREE.Color("blue");
     let lastPt: THREE.Vector3 | undefined = undefined;
-    createComputed(on(
-      params.pointerDown,
+    createRenderEffect(
+      () => params.pointerDown(),
       (pointerDown) => {
         if (!pointerDown) {
           return;
         }
         onCleanup(() => lastPt = undefined);
-        createComputed(on(
-          lastSeenPointUnderRayWhilePointerDown,
+        createRenderEffect(
+          () => lastSeenPointUnderRayWhilePointerDown(),
           (nextPt: THREE.Vector3 | undefined) => {
             if (nextPt == undefined) {
               return;
@@ -132,15 +132,14 @@ export class PaintMode implements Mode {
               }
               lastPt = nextPt;
             }
-          },
-        ));
+          }
+        );
       },
-      { defer: true, },
-    ));
+    );
     let geo = new THREE.SphereGeometry(0.5 * untrack(() => state.brushSize) * 10.0);
     let mat = new THREE.MeshStandardMaterial({ color: "blue", });
     let mesh = new THREE.Mesh(geo, mat);
-    createComputed(on(
+    createRenderEffect(
       () => state.brushSize,
       (brushSize) => {
         geo.dispose();
@@ -148,7 +147,7 @@ export class PaintMode implements Mode {
         mesh = new THREE.Mesh(geo, mat);
         params.rerender();
       },
-    ));
+    );
     onCleanup(() => {
       geo.dispose();
       mat.dispose();
@@ -168,7 +167,7 @@ export class PaintMode implements Mode {
               if (Number.isNaN(x)) {
                 return;
               }
-              setState("brushSize", x);
+              setState((s) => { s.brushSize = x });
             }}
           />
         </label>
@@ -186,7 +185,7 @@ export class PaintMode implements Mode {
               if (Number.isNaN(x)) {
                 return;
               }
-              setState("softness", x);
+              setState((s) => { s.softness = x });
             }}
           />
         </label>

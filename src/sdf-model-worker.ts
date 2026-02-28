@@ -345,7 +345,7 @@ async function marchCubes(params: {
         triangles,
       },
     },
-  }, [ points.buffer, triangles.buffer, ]);
+  }, { transfer: [ points.buffer, triangles.buffer, ] });
 }
 
 async function writeShaderCode(params: { doneId: string }) {
