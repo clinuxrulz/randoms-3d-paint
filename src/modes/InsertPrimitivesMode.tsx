@@ -1,4 +1,4 @@
-import { Accessor, Component, createRenderEffect, createMemo, Match, onCleanup, Switch } from "solid-js";
+import { Accessor, Component, createRenderEffect, createMemo, Match, onCleanup, Switch, createSignal } from "solid-js";
 import * as THREE from "three";
 import { Mode } from "./Mode";
 import { ModeParams } from "./ModeParams";
@@ -24,24 +24,23 @@ export class InsertPrimitivesMode implements Mode {
   readonly onClick: () => void;
 
   constructor(params: ModeParams) {
+    let [ existingPrimitives, setExistingPrimitives, ] = createSignal<{
+      primitive: Primitive,
+      object: THREE.Object3D,
+      cleanup: () => void,
+    }[]>([]);
     let [ state, setState, ] = createStore<{
-      existingPrimitives: NoTrack<{
-        primitive: Primitive,
-        object: THREE.Object3D,
-        cleanup: () => void,
-      }>[],
       movingExistingPrimitive: THREE.Object3D | undefined,
       insertingPrimitive: Primitive | undefined,
     }>({
-      existingPrimitives: [],
       movingExistingPrimitive: undefined,
       insertingPrimitive: undefined,
     });
     onCleanup(() => {
-      for (let primitive of state.existingPrimitives) {
-        primitive.value.cleanup();
+      for (let primitive of existingPrimitives()) {
+        primitive.cleanup();
       }
-      setState((s) => { s.existingPrimitives = [] });
+      setExistingPrimitives([]);
     });
     let insert = (primitive: Primitive) => {
       setState((s) => { s.insertingPrimitive = primitive });
@@ -52,22 +51,22 @@ export class InsertPrimitivesMode implements Mode {
         primitive.autoCleanup = false;
         setState((s) => {
           s.insertingPrimitive = undefined;
-          s.existingPrimitives = [
-            ...state.existingPrimitives,
-            new NoTrack({
-              primitive: primitive.primitive,
-              object: primitive.object,
-              cleanup: primitive.cleanup,
-            }),
-          ];
         });
+        setExistingPrimitives([
+          ...existingPrimitives(),
+          {
+            primitive: primitive.primitive,
+            object: primitive.object,
+            cleanup: primitive.cleanup,
+          }
+        ]);
       } else if (state.movingExistingPrimitive != undefined) {
         setState((s) => { s.movingExistingPrimitive = undefined });
       }
     };
     let finished = () => {
-      for (let primitive of state.existingPrimitives) {
-        let primitive2 = primitive.value;
+      for (let primitive of existingPrimitives()) {
+        let primitive2 = primitive;
         let object = primitive2.object;
         let origin = new THREE.Vector3();
         let orientation = new THREE.Quaternion();
@@ -198,15 +197,15 @@ export class InsertPrimitivesMode implements Mode {
     );
     let overlayObject3D = createMemo(() => {
       let currentPrimitive = threePrimitive()?.object;
-      if (currentPrimitive == undefined && state.existingPrimitives.length == 0) {
+      if (currentPrimitive == undefined && existingPrimitives().length == 0) {
         return undefined;
       }
       let group = new THREE.Group();
       if (currentPrimitive != undefined) {
         group.add(currentPrimitive);
       }
-      for (let primitive of state.existingPrimitives) {
-        group.add(primitive.value.object);
+      for (let primitive of existingPrimitives()) {
+        group.add(primitive.object);
       }
       return group;
     });;
@@ -221,8 +220,8 @@ export class InsertPrimitivesMode implements Mode {
       let pt = params.pointerPos();
       if (pt != undefined) {
         let existingPrimitiveSet = new Set<THREE.Object3D>();
-        for (let primitive of state.existingPrimitives) {
-          existingPrimitiveSet.add(primitive.value.object);
+        for (let primitive of existingPrimitives()) {
+          existingPrimitiveSet.add(primitive.object);
         }
         for (let object of params.getThreeObjectsUnderScreenCoords(pt)) {
           if (existingPrimitiveSet.has(object)) {
